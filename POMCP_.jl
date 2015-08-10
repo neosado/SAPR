@@ -199,6 +199,26 @@ function simulate(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64)
     end
 
     if d == 0 || isEnd(pm, s)
+        if !haskey(alg.T, h)
+            for a in pm.actions
+                alg.N[(h, a)] = 0
+
+                if isFeasible(pm, s, a)
+                    alg.Q[(h, a)] = 0
+                else
+                    alg.Q[(h, a)] = -Inf
+                end
+            end
+
+            alg.Ns[h] = 1
+            alg.T[h] = true
+            alg.B[h] = [s]
+
+        else
+            push!(alg.B[h], s)
+
+        end
+
         return 0
     end
 
@@ -207,12 +227,16 @@ function simulate(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64)
 
         for a in pm.actions
             alg.N[(h, a)] = 0
-            alg.Q[(h, a)] = 0
+
+            if isFeasible(pm, s, a)
+                alg.Q[(h, a)] = 0
+            else
+                alg.Q[(h, a)] = -Inf
+            end
         end
+
         alg.Ns[h] = 1
-
         alg.T[h] = true
-
         alg.B[h] = [s]
 
         ro = rollout(alg, pm, s, h, d)
@@ -229,7 +253,6 @@ function simulate(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64)
 
         if !isFeasible(pm, s, a)
             Qv[i] = -Inf
-            alg.Q[(h, a)] = -Inf
         elseif alg.N[(h, a)] == 0
             Qv[i] = Inf
         else
@@ -249,11 +272,11 @@ function simulate(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64)
 
     q = r + alg.gamma_ * simulate(alg, pm, s_, History([h.history, a, o]), d - 1)
 
-    push!(alg.B[h], s)
-
     alg.N[(h, a)] += 1
     alg.Ns[h] += 1
     alg.Q[(h, a)] += (q - alg.Q[(h, a)]) / alg.N[(h, a)]
+
+    push!(alg.B[h], s)
 
     if alg.visualizer != nothing
         updateTree(alg.visualizer, :after_sim, s, a, r, q, alg.N[(h, a)], alg.Ns[h], alg.Q[(h, a)])
@@ -395,7 +418,7 @@ function getParticles(alg::POMCP, a::Action, o::Observation)
     if haskey(alg.B, History([a, o]))
         return alg.B[History([a, o])]
     else
-        return nothing
+        return State[]
     end
 end
 

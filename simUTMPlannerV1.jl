@@ -239,9 +239,13 @@ function simulate(pm, alg; draw::Bool = false, wait::Bool = false, bSeq::Bool = 
 
         s = s_
 
-        if isEnd(pm, s)
+        if isEnd(pm, s_)
             if draw
                 println("reached the terminal state")
+
+                visInit(upv, sc)
+                visUpdate(upv, sc, sc_state, s_.t, sim = (string(a.action), grid2coord(pm, o.location), r, R))
+                updateAnimation(upv)
             end
 
             break
@@ -250,28 +254,39 @@ function simulate(pm, alg; draw::Bool = false, wait::Bool = false, bSeq::Bool = 
         if bSeq
             particles = getParticles(alg, a, o)
 
-            if particles == nothing
+            # XXX add more particles
+            if length(particles) == 0
+                particles_ = UPState[]
+
+                push!(particles_, UPState(o.location, s_.status, s_.heading, s_.t))
+
                 loc = [o.location...]
                 loc_min = loc
-                dist = Inf
+                dist_min = Inf
 
                 for h in keys(alg.B)
                     if length(h.history) == 2 && h.history[1] == a
                         loc_ = [h.history[2].location...]
 
-                        if norm(loc_ - loc) < dist
-                            dist = norm(loc_ - loc)
+                        if norm(loc_ - loc) < dist_min
+                            dist_min = norm(loc_ - loc)
                             loc_min = loc_
                         end
                     end
                 end
 
-                o = UPObservation(tuple(loc_min...))
+                if dist_min * pm.cell_len < pm.sc.loc_err_bound
+                    o = UPObservation(tuple(loc_min...))
+                    append!(particles_, getParticles(alg, a, o))
+                end
 
-                particles = getParticles(alg, a, o)
+                for s__ in particles_
+                    if !isEnd(pm, s__)
+                        push!(particles, s__)
+                    end
+                end
             end
 
-            @assert particles != nothing
             b = updateBelief(pm, UPBeliefParticles(particles))
 
             reinitialize(alg, a, o)
@@ -299,9 +314,7 @@ end
 
 
 if false
-    srand(uint(time()))
-
-    pm = UTMPlannerV1()
+    pm = UTMPlannerV1(seed = int64(time()))
 
     pm.sc.UAVs[1].navigation = :GPS_INS
     pm.sc.sa_dist = 500.
@@ -311,8 +324,7 @@ end
 
 
 if false
-    #pm = UTMPlannerV1(seed = int64(time()))
-    pm = UTMPlannerV1(seed = 1439142900)
+    pm = UTMPlannerV1(seed = int64(time()))
 
     #pm.sc.UAVs[1].navigation = :GPS_INS
     pm.sc.sa_dist = 500.
@@ -338,6 +350,9 @@ if false
 
         #pm.sc.UAVs[1].navigation = :GPS_INS
         pm.sc.sa_dist = 500.
+
+        # XXX debug
+        print(pm.seed, " ")
 
         if !bSeq
             x = simulate(pm, nothing)
