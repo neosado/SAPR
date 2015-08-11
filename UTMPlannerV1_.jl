@@ -370,6 +370,10 @@ end
 
 function restoreUAVStates(up::UTMPlannerV1, t::Int64)
 
+    if t > length(up.UAVStates) - 1
+        t = length(up.UAVStates) - 1
+    end
+
     for i = 2:up.sc.nUAV
         up.sc_state.UAVStates[i].index = up.UAVStates[t + 1][i]["index"]
         up.sc_state.UAVStates[i].status = up.UAVStates[t + 1][i]["status"]
@@ -378,6 +382,9 @@ function restoreUAVStates(up::UTMPlannerV1, t::Int64)
         up.sc_state.UAVStates[i].heading = up.UAVStates[t + 1][i]["heading"]
     end
 end
+
+
+computeDist(p1::Vector{Float64}, p2::Vector{Float64}, p::Vector{Float64}) = abs((p2[2] - p1[2]) * p[1] - (p2[1] - p1[1]) * p[2] + p2[1] * p1[2] - p2[2] * p1[1]) / sqrt((p2[2] - p1[2])^2 + (p2[1] - p1[1])^2)
 
 
 function Generative(up::UTMPlannerV1, s::UPState, a::UPAction)
@@ -399,18 +406,48 @@ function Generative(up::UTMPlannerV1, s::UPState, a::UPAction)
 
     r = 0
 
+    if a.action != :None_
+        atype, aindex, aloc = convertHeading(uav, a.action)
+        htype, hindex, hloc = convertHeading(uav, s.heading)
+
+        dist = 0.
+
+        if atype == :waypoint
+            for k = hindex:aindex-1
+                dist += computeDist(uav.waypoints[k], uav.waypoints[k+1], uav_state.curr_loc)
+            end
+
+            r += -int64(ceil(dist / up.cell_len))
+
+        elseif atype == :end_
+            for k = hindex:uav.nwaypoint-1
+                dist += computeDist(uav.waypoints[k], uav.waypoints[k+1], uav_state.curr_loc)
+            end
+
+            dist += computeDist(uav.waypoints[end], uav.end_loc, uav_state.curr_loc)
+
+            r += -int64(ceil(dist / up.cell_len))
+
+        elseif atype == :base
+            c1 = 1.
+            c2 = 0.
+            r += -int64(ceil(norm(aloc - uav_state.curr_loc) / up.cell_len * c1) + c2)
+
+        end
+    end
+
     for i = 1:up.dt
         uav_loc = coord2grid(up, uav_state.curr_loc)
 
         if uav_state.status == :flying
-            for i = 2:up.sc.nUAV
-                state2 = up.sc_state.UAVStates[i]
+            for k = 2:up.sc.nUAV
+                state2 = up.sc_state.UAVStates[k]
 
                 if  state2.status == :flying
                     loc = coord2grid(up, state2.curr_loc)
 
                     if sqrt(abs(uav_loc[1] - loc[1])^2 + abs(uav_loc[2] - loc[2])^2) * up.cell_len < up.sc.sa_dist
-                        r += -100
+                        r += -1000
                     end
                 end
             end
@@ -424,11 +461,10 @@ function Generative(up::UTMPlannerV1, s::UPState, a::UPAction)
         #    end
         #end
 
-        htype, hindex, hloc = convertHeading(uav, uav_state.heading)
-
-        if htype == :base
-            r += -10
-        end
+        #htype, hindex, hloc = convertHeading(uav, uav_state.heading)
+        #if htype == :base
+        #    r += -10
+        #end
 
         UAV_.updateState(uav, uav_state, t)
 
@@ -515,9 +551,9 @@ function reward(up::UTMPlannerV1, s::UPState, a::UPAction)
     end
 
     if a.action != :None_
-        htype, hindex, hloc = convertHeading(up.sc.UAVs[1], a.action)
+        atype, aindex, aloc = convertHeading(up.sc.UAVs[1], a.action)
 
-        if htype == :base
+        if atype == :base
             r += -10
         end
     end

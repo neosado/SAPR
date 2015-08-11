@@ -186,7 +186,7 @@ function simulate(pm, alg; draw::Bool = false, wait::Bool = false, bSeq::Bool = 
         updateAnimation(upv)
     end
 
-    while true
+    while s.t < length(pm.UAVStates)
         if bSeq
             #println("T: ", alg.T)
             #println("N: ", alg.N)
