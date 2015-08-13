@@ -165,7 +165,7 @@ function simulate(sc::Scenario, sc_state::ScenarioState; draw::Bool = false, wai
 end
 
 
-function simulate(pm, alg; draw::Bool = false, wait::Bool = false, bSeq::Bool = false)
+function simulate(pm, alg; draw::Bool = false, wait::Bool = false, bSeq::Bool = false, ts::Int64 = 0, action::Symbol = :None_)
 
     sc = pm.sc
     sc_state = pm.sc_state
@@ -205,11 +205,12 @@ function simulate(pm, alg; draw::Bool = false, wait::Bool = false, bSeq::Bool = 
             #println("Q: ", alg.Q)
             #println("B: ", alg.B)
             #println()
+
         else
             a = UPAction(:None_)
 
-            if s.t == 0
-                a = UPAction(:None_)
+            if s.t == ts
+                a = UPAction(action)
             end
 
         end
@@ -329,7 +330,7 @@ if false
     #pm.sc.UAVs[1].navigation = :GPS_INS
     pm.sc.sa_dist = 500.
 
-    alg = POMCP(depth = 5, default_policy = default_policy, nloop_max = 100, nloop_min = 100, c = 10., gamma_ = 0.95, rgamma_ = 0.95, visualizer = MCTSVisualizer())
+    alg = POMCP(depth = 5, default_policy = default_policy, nloop_max = 1000, nloop_min = 1000, c = 500., gamma_ = 0.95, rgamma_ = 0.95, visualizer = MCTSVisualizer())
 
     #test(pm, alg)
     simulate(pm, alg, draw = true, wait = false, bSeq = true)
@@ -357,7 +358,7 @@ if false
         if !bSeq
             x = simulate(pm, nothing)
         else
-            alg = POMCP(depth = 5, default_policy = default_policy, nloop_max = 100, nloop_min = 100, c = 10., gamma_ = 0.95, rgamma_ = 0.95)
+            alg = POMCP(depth = 5, default_policy = default_policy, nloop_max = 100, nloop_min = 100, c = 500., gamma_ = 0.95, rgamma_ = 0.95)
             x = simulate(pm, alg, bSeq = bSeq)
         end
 
