@@ -45,8 +45,7 @@ while true
     I = map((x) -> x >= gamma_t ? 1 : 0, S)
 
     for j = 1:n
-        I_ = map((x) -> x == 1? 1 : 0, X[:, j])
-        p[j] = sum(I .* I_) / sum(I)
+        p[j] = sum(I .* X[:, j]) / sum(I)
     end
 
     if gamma_t == gamma

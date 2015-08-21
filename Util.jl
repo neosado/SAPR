@@ -1,6 +1,6 @@
 module Util
 
-export argmax, sampleFromProb
+export argmax, sampleFromProb, neat
 
 
 using Base.Test
@@ -33,6 +33,18 @@ function sampleFromProb(p)
     end
 
     return index
+end
+
+
+neat_(v) = round(signif(v, 4), 4)
+
+function neat(v)
+
+    if typeof(v) <: Array
+        return map(x -> neat_(x), v)
+    else
+        return neat_(v)
+    end
 end
 
 

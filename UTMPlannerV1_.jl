@@ -441,7 +441,7 @@ function Generative(up::UTMPlannerV1, s::UPState, a::UPAction)
 
                 if  state__.status == :flying
                     if norm(state__.curr_loc - uav_state.curr_loc) < up.sc.sa_dist
-                        r += -100
+                        r += -1000
                     end
                 end
             end
@@ -557,7 +557,7 @@ function reward(up::UTMPlannerV1, s::UPState, a::UPAction)
 
             if  state__.status == :flying
                 if norm(state__.curr_loc - uav_state.curr_loc) < up.sc.sa_dist
-                    r += -100
+                    r += -1000
                 end
             end
         end

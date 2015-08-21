@@ -43,14 +43,16 @@ type POMCP <: MCTS
     c::Float64
     gamma_::Float64
 
+    rollout_type::Symbol
     rgamma_::Float64
+    CE_samples::Vector{(Action, Float64)}
 
     reuse::Bool
 
     visualizer::Union(MCTSVisualizer, Nothing)
 
 
-    function POMCP(;seed::Union(Int64, Nothing) = nothing, depth::Int64 = 3, default_policy::Function = pi_0, nloop_max::Int64 = 10000, nloop_min::Int64 = 10000, eps::Float64 = 1.e-3, c::Float64 = 1., gamma_::Float64 = 0.9, rgamma_::Float64 = 0.9, visualizer::Union(MCTSVisualizer, Nothing) = nothing)
+    function POMCP(;seed::Union(Int64, Nothing) = nothing, depth::Int64 = 3, default_policy::Function = pi_0, nloop_max::Int64 = 10000, nloop_min::Int64 = 10000, eps::Float64 = 1.e-3, c::Float64 = 1., gamma_::Float64 = 0.9, rollout_type::Symbol = :default, rgamma_::Float64 = 0.9, visualizer::Union(MCTSVisualizer, Nothing) = nothing)
 
         self = new()
 
@@ -82,8 +84,9 @@ type POMCP <: MCTS
         self.c = c
         self.gamma_ = gamma_
 
-        # rollout gamma
-        self.rgamma_ = rgamma_
+        self.rollout_type = rollout_type
+        self.rgamma_ = rgamma_  # rollout gamma
+        self.CE_samples = (Action, Int64)[]
 
         self.reuse = false
 
@@ -107,27 +110,13 @@ function pi_0(pm::POMDP, s::State)
 end
 
 
-# s', o, r ~ G(s, a)
-#function Generative(pm::POMDP, s::State, a::Action)
-#
-#    s_ = nextState(pm, s, a)
-#    o = observe(pm, s_, a)
-#    if pm.reward_functype == :type2
-#        r = reward(pm, s, a)
-#    elseif pm.reward_functype == :type3
-#        r = reward(pm, s, a, s_)
-#    end
-#
-#    return s_, o, r
-#end
-
 function Generative(pm::POMDP, s::State, a::Action)
 
     return POMDP_.Generative(pm, s, a)
 end
 
 
-function rollout(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64)
+function rollout_default(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64)
 
     if d == 0
         return 0
@@ -142,57 +131,100 @@ function rollout(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64)
         return r
     end
 
-    return r + alg.rgamma_ * rollout(alg, pm, s_, h, d - 1)
+    return r + alg.rgamma_ * rollout_default(alg, pm, s_, h, d - 1)
 end
 
-#function rollout_(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64)
-#
-#    if d == 0
-#        return 0
-#    end
-#
-#    a = alg.default_policy(pm, s)
-#    @assert isFeasible(pm, s, a)
-#
-#    s_, o, r = Generative(pm, s, a)
-#
-#    if isEnd(pm, s_)
-#        return r
-#    end
-#
-#    return r + alg.rgamma_ * rollout_(alg, pm, s_, h, d - 1)
-#end
-#
-#function rollout(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64)
-#
-#    r = 0
-#
-#    for n = 1:10
-#        r += (rollout_(alg, pm, s, h, d + 3) - r) / n
-#    end
-#
-#    return r
-#end
 
-#function rollout(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64)
-#
-#    R = 0.
-#
-#    while true
-#        s_, o, r = Generative(pm, s, pm.actions[1])
-#        R += r
-#        s = s_
-#
-#        if isEnd(pm, s)
-#            break
-#        end
-#    end
-#
-#    return R
-#end
+function rollout_to_end(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64)
+
+    R = 0.
+
+    while true
+        s_, o, r = Generative(pm, s, pm.actions[1])
+        R += r
+        s = s_
+
+        if isEnd(pm, s)
+            break
+        end
+    end
+
+    return R
+end
 
 
-function simulate(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64)
+function rollout_CE_(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64)
+
+    if d == 0
+        return 0
+    end
+
+    s_, o, r = Generative(pm, s, pm.actions[1])
+
+    if isEnd(pm, s_)
+        return r
+    end
+
+    return r + alg.rgamma_ * rollout_CE_(alg, pm, s_, h, d - 1)
+end
+
+
+function rollout_CE(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64)
+
+    if d == 0
+        return 0
+    end
+
+    a = alg.default_policy(pm, s)
+    @assert a.action != :None_
+
+    if a.action == s.heading
+        a_ = pm.actions[1]
+    else
+        a_ = a
+    end
+
+    @assert isFeasible(pm, s, a_)
+
+    s_, o, r = Generative(pm, s, a_)
+
+    if isEnd(pm, s_)
+        push!(alg.CE_samples, (a, r))
+        return r
+    end
+
+    r += alg.rgamma_ * rollout_CE_(alg, pm, s_, h, d - 1)
+    push!(alg.CE_samples, (a, r))
+
+    return r
+end
+
+
+function rollout(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64)
+
+    if alg.rollout_type == :default
+        r = rollout_default(alg, pm, s, h, d)
+
+    elseif alg.rollout_type == :MC
+        r = 0
+
+        for n = 1:10
+            r += (rollout_default(alg, pm, s, h, d + 3) - r) / n
+        end
+
+    elseif alg.rollout_type == :to_end
+        r = rollout_to_end(alg, pm, s, h, d)
+
+    elseif alg.rollout_type == :CE_worst || alg.rollout_type == :CE_best
+        r = rollout_CE(alg, pm, s, h, d)
+
+    end
+
+    return r
+end
+
+
+function simulate(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64; bStat::Bool = false)
 
     if alg.visualizer != nothing
         updateTree(alg.visualizer, :start_sim, s)
@@ -282,11 +314,15 @@ function simulate(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64)
         updateTree(alg.visualizer, :after_sim, s, a, r, q, alg.N[(h, a)], alg.Ns[h], alg.Q[(h, a)])
     end
 
-    return q
+    if bStat && d == alg.depth
+        return q, a
+    else
+        return q
+    end
 end
 
 
-function selectAction(alg::POMCP, pm::POMDP, b::Belief)
+function selectAction(alg::POMCP, pm::POMDP, b::Belief; bStat::Bool = false)
 
     if alg.visualizer != nothing
         initTree(alg.visualizer)
@@ -303,12 +339,32 @@ function selectAction(alg::POMCP, pm::POMDP, b::Belief)
         Qv[a] = 0.
     end
 
+    if bStat
+        Qv_data = Dict{Action, Vector{Float64}}()
+
+        for a in pm.actions
+            Qv_data[a] = Float64[]
+        end
+    end
+
+    if alg.rollout_type == :CE_worst || alg.rollout_type == :CE_best
+        alg.CE_samples = (Action, Int64)[]
+    end
+
     for i = 1:alg.nloop_max
         #println("iteration: ", i)
 
         s = sampleBelief(pm, b)
 
-        simulate(alg, pm, s, h, alg.depth)
+        if !bStat
+            simulate(alg, pm, s, h, alg.depth)
+        else
+            ret = simulate(alg, pm, s, h, alg.depth, bStat = true)
+            if length(ret) == 2
+                q, a = ret
+                push!(Qv_data[a], q)
+            end
+        end
 
         #println("h: ", h)
         #println("T: ", alg.T)
@@ -318,6 +374,7 @@ function selectAction(alg::POMCP, pm::POMDP, b::Belief)
         #println()
 
         res = 0.
+
         for a in pm.actions
             Qv_prev = Qv[a]
             Qv[a] = alg.Q[(h, a)]
@@ -350,7 +407,11 @@ function selectAction(alg::POMCP, pm::POMDP, b::Belief)
         saveTree(alg.visualizer, pm)
     end
 
-    return action, Qv
+    if !bStat
+        return action, Qv
+    else
+        return action, Qv, Qv_data
+    end
 end
 
 
