@@ -135,7 +135,7 @@ function rollout_default(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64)
 end
 
 
-function rollout_to_end(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64)
+function rollout_inf(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64)
 
     R = 0.
 
@@ -153,7 +153,7 @@ function rollout_to_end(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64)
 end
 
 
-function rollout_CE_(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64)
+function rollout_none(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64)
 
     if d == 0
         return 0
@@ -165,7 +165,26 @@ function rollout_CE_(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64)
         return r
     end
 
-    return r + alg.rgamma_ * rollout_CE_(alg, pm, s_, h, d - 1)
+    return r + alg.rgamma_ * rollout_none(alg, pm, s_, h, d - 1)
+end
+
+
+function rollout_default_once(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64)
+
+    if d == 0
+        return 0
+    end
+
+    a = alg.default_policy(pm, s)
+    @assert isFeasible(pm, s, a)
+
+    s_, o, r = Generative(pm, s, a)
+
+    if isEnd(pm, s_)
+        return r
+    end
+
+    return r + alg.rgamma_ * rollout_none(alg, pm, s_, h, d - 1)
 end
 
 
@@ -193,7 +212,7 @@ function rollout_CE(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64)
         return r
     end
 
-    r += alg.rgamma_ * rollout_CE_(alg, pm, s_, h, d - 1)
+    r += alg.rgamma_ * rollout_none(alg, pm, s_, h, d - 1)
     push!(alg.CE_samples, (a, r))
 
     return r
@@ -205,6 +224,9 @@ function rollout(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64)
     if alg.rollout_type == :default
         r = rollout_default(alg, pm, s, h, d)
 
+    elseif alg.rollout_type == :default_once
+        r = rollout_default_once(alg, pm, s, h, d)
+
     elseif alg.rollout_type == :MC
         r = 0
 
@@ -212,8 +234,8 @@ function rollout(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64)
             r += (rollout_default(alg, pm, s, h, d + 3) - r) / n
         end
 
-    elseif alg.rollout_type == :to_end
-        r = rollout_to_end(alg, pm, s, h, d)
+    elseif alg.rollout_type == :inf
+        r = rollout_inf(alg, pm, s, h, d)
 
     elseif alg.rollout_type == :CE_worst || alg.rollout_type == :CE_best
         r = rollout_CE(alg, pm, s, h, d)

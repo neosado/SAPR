@@ -509,14 +509,16 @@ end
 
 
 if false
-    N = 1000
+    N = 100
     RE_threshold = 0.1
 
-    bSeq = false
+    bSeq = true
+
     ts = 0
     action = :None_
-    # :default, :MC, :to_end, :CE_worst, :CE_best
-    rollout_type = :CE_worst
+
+    # :default, :default_once, :MC, :inf, :CE_worst, :CE_best
+    rollout_type = :default
 
     va = Float64[]
     y = 0.
@@ -549,7 +551,9 @@ if false
                 break
             end
 
-            println("n: ", n, ", mean: ", neat(va[end]), ", std: ", neat(std(va)), ", RE: ", neat(std(va) / abs(va[end])))
+            if n != N
+                println("n: ", n, ", mean: ", neat(va[end]), ", std: ", neat(std(va)), ", RE: ", neat(std(va) / abs(va[end])))
+            end
         end
 
         if n == N
