@@ -316,7 +316,7 @@ function simulate(pm, alg; draw::Bool = false, wait::Bool = false, bSeq::Bool = 
 
     R = 0
 
-    if alg.rollout_type == :CE_worst || alg.rollout_type == :CE_best
+    if alg != nothing && (alg.rollout_type == :CE_worst || alg.rollout_type == :CE_best)
         rollout_policy_param = initRolloutPolicy(pm, alg)
     end
 
@@ -503,6 +503,7 @@ if false
     alg = POMCP(depth = 5, default_policy = default_policy, nloop_max = 100, nloop_min = 100, c = 500., gamma_ = 0.95, rollout_type = :CE_worst, rgamma_ = 0.95, visualizer = MCTSVisualizer())
 
     #test(pm, alg)
+    #simulate(pm, nothing, draw = true, wait = false, ts = 0, action = :None_)
     simulate(pm, alg, draw = true, wait = false, bSeq = true, bStat = false, debug = 1)
 end
 
@@ -511,9 +512,11 @@ if false
     N = 1000
     RE_threshold = 0.1
 
+    bSeq = false
+    ts = 0
+    action = :None_
     # :default, :MC, :to_end, :CE_worst, :CE_best
     rollout_type = :CE_worst
-    bSeq = true
 
     va = Float64[]
     y = 0.
@@ -529,7 +532,7 @@ if false
         print(pm.seed, " ")
 
         if !bSeq
-            x = simulate(pm, nothing)
+            x = simulate(pm, nothing, ts = ts, action = action)
         else
             alg = POMCP(depth = 5, default_policy = default_policy, nloop_max = 100, nloop_min = 100, c = 500., gamma_ = 0.95, rollout_type = rollout_type, rgamma_ = 0.95)
             x = simulate(pm, alg, bSeq = bSeq)
