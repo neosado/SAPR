@@ -114,6 +114,10 @@ type Scenario
             end
 
             srand(self.seed)
+
+        else
+            self.seed = nothing
+
         end
 
         self.x = params.x

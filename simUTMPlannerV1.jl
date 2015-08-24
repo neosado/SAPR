@@ -432,7 +432,6 @@ function simulate(pm, alg; draw::Bool = false, wait::Bool = false, bSeq::Bool = 
                 push!(particles_, UPState(o.location, s_.status, s_.heading, s_.t))
 
                 loc = [o.location...]
-                loc_min = loc
                 dist_min = Inf
 
                 for h in keys(alg.B)
@@ -441,14 +440,21 @@ function simulate(pm, alg; draw::Bool = false, wait::Bool = false, bSeq::Bool = 
 
                         if norm(loc_ - loc) < dist_min
                             dist_min = norm(loc_ - loc)
-                            loc_min = loc_
                         end
                     end
                 end
 
                 if dist_min * pm.cell_len < pm.sc.loc_err_bound
-                    o = UPObservation(tuple(loc_min...))
-                    append!(particles_, getParticles(alg, a, o))
+                    for h in sort(collect(keys(alg.B)), by = string)
+                        if length(h.history) == 2 && h.history[1] == a
+                            loc_ = [h.history[2].location...]
+
+                            if norm(loc_ - loc) == dist_min
+                                o = UPObservation(tuple(loc_...))
+                                append!(particles_, getParticles(alg, a, o))
+                            end
+                        end
+                    end
                 end
 
                 for s__ in particles_
@@ -495,16 +501,21 @@ end
 
 
 if false
-    pm = UTMPlannerV1(seed = int64(time()))
+    seed = int64(time())
+
+    # :default, :default_once, :MC, :inf, :CE_worst, :CE_best
+    rollout_type = :default
+
+    pm = UTMPlannerV1(seed = seed)
 
     #pm.sc.UAVs[1].navigation = :GPS_INS
     pm.sc.sa_dist = 500.
 
-    alg = POMCP(depth = 5, default_policy = default_policy, nloop_max = 100, nloop_min = 100, c = 500., gamma_ = 0.95, rollout_type = :CE_worst, rgamma_ = 0.95, visualizer = MCTSVisualizer())
+    alg = POMCP(depth = 5, default_policy = default_policy, nloop_max = 100, nloop_min = 100, c = 500., gamma_ = 0.95, rollout_type = rollout_type, rgamma_ = 0.95, visualizer = MCTSVisualizer())
 
     #test(pm, alg)
     #simulate(pm, nothing, draw = true, wait = false, ts = 0, action = :None_)
-    simulate(pm, alg, draw = true, wait = false, bSeq = true, bStat = false, debug = 1)
+    simulate(pm, alg, draw = false, wait = false, bSeq = true, bStat = false, debug = 1)
 end
 
 
@@ -517,21 +528,34 @@ if false
     ts = 0
     action = :None_
 
+    #iseed = int64(time())
+
     # :default, :default_once, :MC, :inf, :CE_worst, :CE_best
     rollout_type = :default
+
+    if isdefined(:iseed)
+        println("seed: ", iseed)
+        srand(iseed)
+    end
 
     va = Float64[]
     y = 0.
 
     n = 1
     while true
-        pm = UTMPlannerV1(seed = int64(time()))
+        if isdefined(:iseed)
+            pm = UTMPlannerV1()
+        else
+            seed = int64(time())
+            pm = UTMPlannerV1(seed = seed)
+        end
 
         #pm.sc.UAVs[1].navigation = :GPS_INS
         pm.sc.sa_dist = 500.
 
-        # XXX debug
-        print(pm.seed, " ")
+        if !isdefined(:iseed)
+            print(pm.seed, " ")
+        end
 
         if !bSeq
             x = simulate(pm, nothing, ts = ts, action = action)
@@ -540,7 +564,6 @@ if false
             x = simulate(pm, alg, bSeq = bSeq)
         end
 
-        # XXX debug
         println(n, " ", x)
 
         y += (x - y) / n

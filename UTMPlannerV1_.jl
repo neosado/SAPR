@@ -278,6 +278,10 @@ type UTMPlannerV1 <: POMDP
             end
 
             srand(self.seed)
+
+        else
+            self.seed = nothing
+
         end
 
         self.sc, self.sc_state = generateScenario()

@@ -64,6 +64,10 @@ type POMCP <: MCTS
             end
 
             srand(self.seed)
+
+        else
+            self.seed = nothing
+
         end
 
         self.depth = depth
@@ -318,7 +322,7 @@ function simulate(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64; bStat::
 
     s_, o, r = Generative(pm, s, a)
 
-    #println("Qv: ", round(Qv, 2), ", (a, o): {", a, ", ", o, "}, s_: ", s_, ", r: ", r)
+    #println("Qv: ", neat(Qv), ", (a, o): {", a, ", ", o, "}, s_: ", s_, ", r: ", r)
 
     if alg.visualizer != nothing
         updateTree(alg.visualizer, :before_sim, s, a, o)
