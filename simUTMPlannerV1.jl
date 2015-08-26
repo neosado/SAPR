@@ -102,7 +102,7 @@ function test(pm, alg)
     b = getInitialBelief(pm)
 
     pm.sc.bMCTS = true
-    a_opt, Qv = selectAction(alg, pm, b)
+    a_opt, Q = selectAction(alg, pm, b)
 
     #println("T: ", alg.T)
     #println("N: ", alg.N)
@@ -111,12 +111,12 @@ function test(pm, alg)
     #println("B: ", alg.B)
     #println()
 
-    Qv__ = Float64[]
+    Q__ = Float64[]
     for a in  pm.actions
-        push!(Qv__, round(Qv[a], 2))
+        push!(Q__, Q[a])
     end
 
-    println("Qv: ", Qv__)
+    println("Q: ", neat(Q__))
     println("action: ", a_opt.action)
 end
 
@@ -209,7 +209,7 @@ function initRolloutPolicy(pm::UTMPlannerV1, alg::POMCP)
 end
 
 
-function updateRolloutPolicy(pm::UTMPlannerV1, alg::POMCP, prev_dist_param::Vector{Float64}; gamma::Float64 = 1000., rho::Float64 = 0.1)
+function updateRolloutPolicy(pm::UTMPlannerV1, alg::POMCP, prev_dist_param::Vector{Float64}; gamma::Float64 = 1., rho::Float64 = 0.1)
 
     if alg.rollout_type == :CE_worst
         alpha = [0, ones(pm.nAction-1) * 0.05]
@@ -256,42 +256,76 @@ function updateRolloutPolicy(pm::UTMPlannerV1, alg::POMCP, prev_dist_param::Vect
         dist_param /= sum(dist_param)
 
     elseif alg.rollout_type == :CE_best
-        alpha = [0, ones(pm.nAction-1) * 0.05]
+        if false
+            alpha = [0, ones(pm.nAction-1) * 0.05]
 
-        nsample = length(alg.CE_samples)
-        dist_param = zeros(pm.nAction)
+            nsample = length(alg.CE_samples)
+            dist_param = zeros(pm.nAction)
 
-        Z = zeros(nsample, pm.nAction)
-        S = Array(Float64, nsample)
+            Z = zeros(nsample, pm.nAction)
+            S = Array(Float64, nsample)
 
-        i = 1
-        for (a, r) in alg.CE_samples
-            a_ind = 0
-            for j = 1:pm.nAction
-                if a == pm.actions[j]
-                    a_ind = j
-                    break
+            i = 1
+            for (a, r) in alg.CE_samples
+                a_ind = 0
+                for j = 1:pm.nAction
+                    if a == pm.actions[j]
+                        a_ind = j
+                        break
+                    end
                 end
+                @assert a_ind != 0
+
+                Z[i, a_ind] = 1
+                S[i] = r
+
+                i += 1
             end
-            @assert a_ind != 0
 
-            Z[i, a_ind] = 1
-            S[i] = r
+            Ssorted = sort(S)
 
-            i += 1
+            gamma_ = Ssorted[ceil((1 - rho) * nsample)]
+
+            I = map((x) -> x >= gamma_ ? 1 : 0, S)
+
+            for i = 1:pm.nAction
+                dist_param[i] = sum(I .* Z[:, i]) / sum(I) + alpha[i]
+            end
+
+            dist_param /= sum(dist_param)
+
+        else
+            alpha = [0, ones(pm.nAction-1) * 0.05]
+            c = 1.
+
+            dist_param = zeros(pm.nAction)
+
+            R = Dict{UPAction, Vector{Float64}}()
+
+            for a in pm.actions
+                R[a] = Float64[]
+            end
+
+            for (a, r) in alg.CE_samples
+                push!(R[a], r * pm.reward_norm_const)
+            end
+
+            for i = 1:pm.nAction
+                dist_param[i] = mean(R[pm.actions[i]])
+            end
+
+            dist_param = 1 ./ (-dist_param + c)
+
+            indexes = find(x -> !isequal(x, NaN), dist_param)
+            indexes_ = find(x -> isequal(x, NaN), dist_param)
+
+            dist_param[indexes] /= sum(dist_param[indexes])
+            dist_param[indexes] += alpha[indexes]
+            dist_param[indexes_] = alpha[indexes_]
+
+            dist_param /= sum(dist_param)
+
         end
-
-        Ssorted = sort(S)
-
-        gamma_ = Ssorted[ceil((1 - rho) * nsample)]
-
-        I = map((x) -> x >= gamma_ ? 1 : 0, S)
-
-        for i = 1:pm.nAction
-            dist_param[i] = sum(I .* Z[:, i]) / sum(I) + alpha[i]
-        end
-
-        dist_param /= sum(dist_param)
 
     end
 
@@ -324,6 +358,10 @@ function simulate(pm, alg; draw::Bool = false, wait::Bool = false, bSeq::Bool = 
         visInit(upv, sc)
         visUpdate(upv, sc)
         updateAnimation(upv)
+
+        visInit(upv, sc)
+        visUpdate(upv, sc, sc_state, s.t)
+        updateAnimation(upv)
     end
 
     while s.t < length(pm.UAVStates)
@@ -337,12 +375,12 @@ function simulate(pm, alg; draw::Bool = false, wait::Bool = false, bSeq::Bool = 
 
             pm.sc.bMCTS = true
             if !bStat
-                a, Qv = selectAction(alg, pm, b)
+                a, Q = selectAction(alg, pm, b, debug = debug)
             else
-                a, Qv, Qv_data = selectAction(alg, pm, b, bStat = true)
+                a, Q, Qs = selectAction(alg, pm, b, bStat = true, debug = debug)
 
                 for a__ in  pm.actions
-                    data = Qv_data[a__]
+                    data = Qs[a__]
                     println(a.action, ": ", neat(mean(data)), ", ", neat(std(data)), ", ", neat(std(data)/mean(data)))
                 end
             end
@@ -358,6 +396,19 @@ function simulate(pm, alg; draw::Bool = false, wait::Bool = false, bSeq::Bool = 
             if alg.rollout_type == :CE_worst || alg.rollout_type == :CE_best
                 rollout_policy_param = updateRolloutPolicy(pm, alg, rollout_policy_param)
                 if debug > 1
+                    if debug > 2
+                        R__ = Dict{UPAction, Vector{Float64}}()
+                        for a__ in pm.actions
+                            R__[a__] = Float64[]
+                        end
+                        for (a__, r__) in alg.CE_samples
+                            push!(R__[a__], r__ * pm.reward_norm_const)
+                        end
+                        for a__ in pm.actions
+                            println(a__, ": ", length(R__[a__]), ", ", neat(mean(R__[a__])))
+                        end
+                    end
+
                     println("ro_param: ", neat(rollout_policy_param))
                 end
             end
@@ -379,32 +430,34 @@ function simulate(pm, alg; draw::Bool = false, wait::Bool = false, bSeq::Bool = 
 
         R += r
 
-        Qv__ = Float64[]
-        if bSeq
-            for a__ in  pm.actions
-                push!(Qv__, round(Qv[a__], 2))
-            end
-        end
-
         if debug > 0
-            println("time: ", s.t, ", s: ", grid2coord(pm, s.location), " ", s.status, ", Qv: ", neat(Qv__), ", a: ", a.action, ", o: ", grid2coord(pm, o.location), ", r: ", r, ", R: ", R, ", s_: ", grid2coord(pm, s_.location), " ", s_.status)
+            if debug > 2
+                for a__ in pm.actions
+                    println(a__, ": ", alg.N[(History(), a__)])
+                end
+            end
+
+            Q__ = Float64[]
+            if bSeq
+                for a__ in  pm.actions
+                    push!(Q__, Q[a__])
+                end
+            end
+
+            println("time: ", s.t, ", s: ", grid2coord(pm, s.location), " ", s.status, ", Q: ", neat(Q__), ", a: ", a.action, ", o: ", grid2coord(pm, o.location), ", r: ", neat(r), ", R: ", neat(R), ", s_: ", grid2coord(pm, s_.location), " ", s_.status)
         end
 
         if draw
             visInit(upv, sc)
-            visUpdate(upv, sc, sc_state, s.t, sim = (string(a.action), grid2coord(pm, o.location), r, R))
+            visUpdate(upv, sc, sc_state, s_.t, sim = (string(a.action), grid2coord(pm, o.location), r, R))
             updateAnimation(upv)
         end
 
         s = s_
 
         if isEnd(pm, s_)
-            if draw
+            if debug > 0
                 println("reached the terminal state")
-
-                visInit(upv, sc)
-                visUpdate(upv, sc, sc_state, s_.t, sim = (string(a.action), grid2coord(pm, o.location), r, R))
-                updateAnimation(upv)
             end
 
             break
@@ -502,6 +555,11 @@ end
 
 if false
     seed = int64(time())
+    #seed = 1440401261   # 100
+    #seed = 1440609604   # 1000, CE_best, -2081
+    #seed = 1440610899   # 1000, CE_best, -154
+
+    nloop = 100
 
     # :default, :default_once, :MC, :inf, :CE_worst, :CE_best
     rollout_type = :default
@@ -511,11 +569,11 @@ if false
     #pm.sc.UAVs[1].navigation = :GPS_INS
     pm.sc.sa_dist = 500.
 
-    alg = POMCP(depth = 5, default_policy = default_policy, nloop_max = 100, nloop_min = 100, c = 500., gamma_ = 0.95, rollout_type = rollout_type, rgamma_ = 0.95, visualizer = MCTSVisualizer())
+    alg = POMCP(depth = 5, default_policy = default_policy, nloop_max = nloop, nloop_min = nloop, c = 2., gamma_ = 0.95, rollout_type = rollout_type, rgamma_ = 0.95, visualizer = MCTSVisualizer())
 
     #test(pm, alg)
     #simulate(pm, nothing, draw = true, wait = false, ts = 0, action = :None_)
-    simulate(pm, alg, draw = false, wait = false, bSeq = true, bStat = false, debug = 1)
+    simulate(pm, alg, draw = true, wait = false, bSeq = true, bStat = false, debug = 3)
 end
 
 
@@ -524,6 +582,7 @@ if false
     RE_threshold = 0.1
 
     bSeq = true
+    nloop = 100
 
     ts = 0
     action = :None_
@@ -560,7 +619,7 @@ if false
         if !bSeq
             x = simulate(pm, nothing, ts = ts, action = action)
         else
-            alg = POMCP(depth = 5, default_policy = default_policy, nloop_max = 100, nloop_min = 100, c = 500., gamma_ = 0.95, rollout_type = rollout_type, rgamma_ = 0.95)
+            alg = POMCP(depth = 5, default_policy = default_policy, nloop_max = nloop, nloop_min = nloop, c = 2., gamma_ = 0.95, rollout_type = rollout_type, rgamma_ = 0.95)
             x = simulate(pm, alg, bSeq = bSeq)
         end
 

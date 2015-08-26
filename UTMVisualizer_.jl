@@ -13,6 +13,7 @@ using PyCall
 using PyPlot
 
 @pyimport matplotlib.animation as ani
+@pyimport matplotlib.patches as patch
 
 import Visualizer_.visInit
 import Visualizer_.visUpdate
@@ -63,6 +64,8 @@ function visInit(vis::UTMVisualizer, sc::Scenario)
         ax1[:set_yticklabels]([])
         ax1[:grid](true)
         ax1[:set_title]("UTM Simulation")
+
+        fig[:show]()
 
         vis.fig = fig
         vis.ax1 = ax1
@@ -134,14 +137,14 @@ function visUpdate(vis::UTMVisualizer, sc::Scenario)
 end
 
 
-function visUpdate(vis::UTMVisualizer, sc::Scenario, state::ScenarioState, timestep::Int64; sim::Union((ASCIIString, Vector{Float64}, Int64, Int64), Nothing) = nothing)
+function visUpdate(vis::UTMVisualizer, sc::Scenario, state::ScenarioState, timestep::Int64; sim::Union((ASCIIString, Union(Vector{Float64}, Nothing), Union(Int64, Float64), Union(Int64, Float64)), Nothing) = nothing)
 
     fig = vis.fig
     ax1 = vis.ax1
 
 
     if sim == nothing
-        text = vis.ax1[:text](0.5, -0.02, "timestep: $timestep, action: $action, observation: $observation, reward: $r, total reward: $R", horizontalalignment = "center", verticalalignment = "top", transform = vis.ax1[:transAxes])
+        text = vis.ax1[:text](0.5, -0.02, "timestep: $timestep, action: Waypoint1, observation: none, reward: 0, total reward: 0", horizontalalignment = "center", verticalalignment = "top", transform = vis.ax1[:transAxes])
     else
         action, observation, r, R  = sim
         text = vis.ax1[:text](0.5, -0.02, "timestep: $timestep, action: $action, observation: $(int64(observation)), reward: $r, total reward: $R", horizontalalignment = "center", verticalalignment = "top", transform = vis.ax1[:transAxes])
@@ -153,7 +156,7 @@ function visUpdate(vis::UTMVisualizer, sc::Scenario, state::ScenarioState, times
         jamming_center_marker = ax1[:plot](sc.jamming_center[1], sc.jamming_center[2], "kx", markersize = 5. / min(sc.x, sc.y) * 5280)
         append!(vis.artists, jamming_center_marker)
 
-        jamming_area = ax1[:add_patch](plt.Circle((sc.jamming_center[1], sc.jamming_center[2]), radius = sc.jamming_radius, edgecolor = "0.5", facecolor = "none", linestyle = "dashed"))
+        jamming_area = ax1[:add_patch](pathch.Circle((sc.jamming_center[1], sc.jamming_center[2]), radius = sc.jamming_radius, edgecolor = "0.5", facecolor = "none", linestyle = "dashed"))
         push!(vis.artists, jamming_area)
     end
 
@@ -173,7 +176,7 @@ function visUpdate(vis::UTMVisualizer, sc::Scenario, state::ScenarioState, times
             uav_marker = ax1[:plot](uav_state.curr_loc[1], uav_state.curr_loc[2], marker_style, markersize = 5. / min(sc.x, sc.y) * 5280)
             append!(vis.artists, uav_marker)
 
-            uav_sa = ax1[:add_patch](plt.Circle((uav_state.curr_loc[1], uav_state.curr_loc[2]), radius = sc.sa_dist / 2, edgecolor = "0.5", facecolor = "none", linestyle = "dotted"))
+            uav_sa = ax1[:add_patch](patch.Circle((uav_state.curr_loc[1], uav_state.curr_loc[2]), radius = sc.sa_dist / 2, edgecolor = "0.5", facecolor = "none", linestyle = "dotted"))
             push!(vis.artists, uav_sa)
         end
     end

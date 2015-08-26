@@ -116,11 +116,13 @@ end
 
 function Generative(pm::POMDP, s::State, a::Action)
 
-    return POMDP_.Generative(pm, s, a)
+    s_, o, r = POMDP_.Generative(pm, s, a)
+
+    return s_, o, r / pm.reward_norm_const
 end
 
 
-function rollout_default(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64)
+function rollout_default(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64; debug::Int64 = 0)
 
     if d == 0
         return 0
@@ -129,13 +131,17 @@ function rollout_default(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64)
     a = alg.default_policy(pm, s)
     @assert isFeasible(pm, s, a)
 
+    if debug > 2
+        print(a, ", ")
+    end
+
     s_, o, r = Generative(pm, s, a)
 
     if isEnd(pm, s_)
         return r
     end
 
-    return r + alg.rgamma_ * rollout_default(alg, pm, s_, h, d - 1)
+    return r + alg.rgamma_ * rollout_default(alg, pm, s_, h, d - 1, debug = debug)
 end
 
 
@@ -192,7 +198,7 @@ function rollout_default_once(alg::POMCP, pm::POMDP, s::State, h::History, d::In
 end
 
 
-function rollout_CE(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64)
+function rollout_CE(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64; debug::Int64 = 0)
 
     if d == 0
         return 0
@@ -200,6 +206,10 @@ function rollout_CE(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64)
 
     a = alg.default_policy(pm, s)
     @assert a.action != :None_
+
+    if debug > 2
+        print(a, ", ")
+    end
 
     if a.action == s.heading
         a_ = pm.actions[1]
@@ -223,16 +233,16 @@ function rollout_CE(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64)
 end
 
 
-function rollout(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64)
+function rollout(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64; debug::Int64 = 0)
 
     if alg.rollout_type == :default
-        r = rollout_default(alg, pm, s, h, d)
+        r = rollout_default(alg, pm, s, h, d, debug = debug)
 
     elseif alg.rollout_type == :default_once
         r = rollout_default_once(alg, pm, s, h, d)
 
     elseif alg.rollout_type == :MC
-        r = 0
+        r = 0.
 
         for n = 1:10
             r += (rollout_default(alg, pm, s, h, d + 3) - r) / n
@@ -242,7 +252,7 @@ function rollout(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64)
         r = rollout_inf(alg, pm, s, h, d)
 
     elseif alg.rollout_type == :CE_worst || alg.rollout_type == :CE_best
-        r = rollout_CE(alg, pm, s, h, d)
+        r = rollout_CE(alg, pm, s, h, d, debug = debug)
 
     end
 
@@ -250,7 +260,7 @@ function rollout(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64)
 end
 
 
-function simulate(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64; bStat::Bool = false)
+function simulate(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64; bStat::Bool = false, debug::Int64 = 0)
 
     if alg.visualizer != nothing
         updateTree(alg.visualizer, :start_sim, s)
@@ -277,11 +287,19 @@ function simulate(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64; bStat::
 
         end
 
+        if debug > 2
+            if d != 0
+                println("    hit end")
+            end
+        end
+
         return 0
     end
 
     if !haskey(alg.T, h)
-        #println("new node: ", h, " at level ", d)
+        if debug > 2
+            println("    new node: ", h, " at level ", d)
+        end
 
         for a in pm.actions
             alg.N[(h, a)] = 0
@@ -297,17 +315,30 @@ function simulate(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64; bStat::
         alg.T[h] = true
         alg.B[h] = [s]
 
-        ro = rollout(alg, pm, s, h, d)
-        #println("rollout: ", ro)
+        if debug > 2
+            print("    rollout: ")
+        end
+
+        ro = rollout(alg, pm, s, h, d, debug = debug)
+
+        if debug > 2
+            println(neat(ro * pm.reward_norm_const))
+        end
 
         return ro
     end
 
-    #println("found node: ", h, " at level ", d)
+    if debug > 2
+        println("    found node: ", h, " at level ", d)
+    end
 
     Qv = Array(Float64, pm.nAction)
+    Q = Array(Float64, pm.nAction)
+
     for i = 1:pm.nAction
         a = pm.actions[i]
+
+        Q[i] = alg.Q[(h, a)]
 
         if !isFeasible(pm, s, a)
             Qv[i] = -Inf
@@ -322,13 +353,15 @@ function simulate(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64; bStat::
 
     s_, o, r = Generative(pm, s, a)
 
-    #println("Qv: ", neat(Qv), ", (a, o): {", a, ", ", o, "}, s_: ", s_, ", r: ", r)
+    if debug > 2
+        println("    Q: ", neat(Q * pm.reward_norm_const), ", Qv: ", neat(Qv), ", (a, o): {", a, ", ", o, "}, s_: ", s_, ", r: ", neat(r * pm.reward_norm_const))
+    end
 
     if alg.visualizer != nothing
         updateTree(alg.visualizer, :before_sim, s, a, o)
     end
 
-    q = r + alg.gamma_ * simulate(alg, pm, s_, History([h.history, a, o]), d - 1)
+    q = r + alg.gamma_ * simulate(alg, pm, s_, History([h.history, a, o]), d - 1, debug = debug)
 
     alg.N[(h, a)] += 1
     alg.Ns[h] += 1
@@ -348,7 +381,7 @@ function simulate(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64; bStat::
 end
 
 
-function selectAction(alg::POMCP, pm::POMDP, b::Belief; bStat::Bool = false)
+function selectAction(alg::POMCP, pm::POMDP, b::Belief; bStat::Bool = false, debug::Int64 = 0)
 
     if alg.visualizer != nothing
         initTree(alg.visualizer)
@@ -360,16 +393,16 @@ function selectAction(alg::POMCP, pm::POMDP, b::Belief; bStat::Bool = false)
         initialize(alg)
     end
 
-    Qv = Dict{Action, Float64}()
+    Q = Dict{Action, Float64}()
     for a in pm.actions
-        Qv[a] = 0.
+        Q[a] = 0.
     end
 
     if bStat
-        Qv_data = Dict{Action, Vector{Float64}}()
+        Qs = Dict{Action, Vector{Float64}}()
 
         for a in pm.actions
-            Qv_data[a] = Float64[]
+            Qs[a] = Float64[]
         end
     end
 
@@ -378,17 +411,23 @@ function selectAction(alg::POMCP, pm::POMDP, b::Belief; bStat::Bool = false)
     end
 
     for i = 1:alg.nloop_max
-        #println("iteration: ", i)
+        if debug > 2
+            println("  iteration: ", i)
+        end
 
         s = sampleBelief(pm, b)
 
+        if debug > 2
+            println("  sample: ", s)
+        end
+
         if !bStat
-            simulate(alg, pm, s, h, alg.depth)
+            simulate(alg, pm, s, h, alg.depth, debug = debug)
         else
-            ret = simulate(alg, pm, s, h, alg.depth, bStat = true)
+            ret = simulate(alg, pm, s, h, alg.depth, bStat = true, debug = debug)
             if length(ret) == 2
                 q, a = ret
-                push!(Qv_data[a], q)
+                push!(Qs[a], q * pm.reward_norm_const)
             end
         end
 
@@ -402,9 +441,9 @@ function selectAction(alg::POMCP, pm::POMDP, b::Belief; bStat::Bool = false)
         res = 0.
 
         for a in pm.actions
-            Qv_prev = Qv[a]
-            Qv[a] = alg.Q[(h, a)]
-            res += (Qv[a] - Qv_prev)^2
+            Q_prev = Q[a]
+            Q[a] = alg.Q[(h, a)] * pm.reward_norm_const
+            res += (Q[a] - Q_prev)^2
         end
 
         if i > alg.nloop_min &&  sqrt(res) < alg.eps
@@ -412,18 +451,18 @@ function selectAction(alg::POMCP, pm::POMDP, b::Belief; bStat::Bool = false)
         end
     end
 
-    Qv_max = -Inf
+    Q_max = -Inf
     for a in pm.actions
-        Qv[a] = alg.Q[(h, a)]
+        Q[a] = alg.Q[(h, a)] * pm.reward_norm_const
 
-        if Qv[a] > Qv_max
-            Qv_max = Qv[a]
+        if Q[a] > Q_max
+            Q_max = Q[a]
         end
     end
 
     actions = Action[]
     for a in pm.actions
-        if Qv[a] == Qv_max
+        if Q[a] == Q_max
             push!(actions, a)
         end
     end
@@ -434,9 +473,9 @@ function selectAction(alg::POMCP, pm::POMDP, b::Belief; bStat::Bool = false)
     end
 
     if !bStat
-        return action, Qv
+        return action, Q
     else
-        return action, Qv, Qv_data
+        return action, Q, Qs
     end
 end
 

@@ -264,6 +264,7 @@ type UTMPlannerV1 <: POMDP
     UAVStates::Any
 
     reward_functype::Symbol
+    reward_norm_const::Float64
 
 
     function UTMPlannerV1(; seed::Union(Int64, Nothing) = nothing)
@@ -317,6 +318,7 @@ type UTMPlannerV1 <: POMDP
         self.UAVStates = JSON.parsefile("UTMPlannerV1.json")
 
         self.reward_functype = :type2
+        self.reward_norm_const = 1000.
 
         return self
     end
