@@ -530,6 +530,72 @@ function default_policy(pm::UTMPlannerV1, s::UPState)
 end
 
 
+function evalScenario(scenario_number::Union(Int64, Nothing) = nothing; N::Int64 = 100, RE_threshold::Float64 = 0.1, bSeq::Bool = true, nloop::Int64 = 100, ts::Int64 = 0, action::Symbol = :None_, iseed::Union(Int64, Nothing) = nothing, rollout_type::Symbol = :default, Scenarios = nothing, debug::Int64 = 0)
+
+    if iseed != nothing
+        srand(iseed)
+    end
+
+    results = Float64[]
+    va = Float64[]
+    y = 0.
+
+    n = 1
+
+    while true
+        if iseed != nothing
+            pm = UTMPlannerV1(scenario_number = scenario_number, Scenarios = Scenarios)
+        else
+            seed = int64(time())
+
+            if debug > 0
+                print(seed, " ")
+            end
+
+            pm = UTMPlannerV1(seed = seed, scenario_number = scenario_number, Scenarios = Scenarios)
+        end
+
+        if !bSeq
+            x = simulate(pm, nothing, ts = ts, action = action)
+        else
+            alg = POMCP(depth = 5, default_policy = default_policy, nloop_max = nloop, nloop_min = nloop, c = 2., gamma_ = 0.95, rollout_type = rollout_type, rgamma_ = 0.95)
+            x = simulate(pm, alg, bSeq = bSeq)
+        end
+
+        push!(results, x)
+
+        if debug > 0
+            println(n, " ", x)
+        end
+
+        y += (x - y) / n
+        push!(va, y)
+        
+        if n % 100 == 0
+            if std(va) / abs(va[end]) < RE_threshold
+                break
+            end
+
+            if debug > 0 && n != N
+                println("n: ", n, ", mean: ", neat(va[end]), ", std: ", neat(std(va)), ", RE: ", neat(std(va) / abs(va[end])))
+            end
+        end
+
+        if n == N
+            break
+        end
+
+        n += 1
+    end
+
+    if debug > 0
+        println("n: ", n, ", mean: ", neat(va[end]), ", std: ", neat(std(va)), ", RE: ", neat(std(va) / abs(va[end])))
+    end
+
+    return results
+end
+
+
 if false
     pm = UTMPlannerV1(seed = int64(time()))
 
@@ -579,79 +645,16 @@ if false
 end
 
 
-function evalScenario(scenario_number::Union(Int64, Nothing) = nothing; N::Int64 = 100, RE_threshold::Float64 = 0.1, bSeq::Bool = true, nloop::Int64 = 100, ts::Int64 = 0, action::Symbol = :None_, iseed::Union(Int64, Nothing) = nothing, rollout_type::Symbol = :default, Scenarios = nothing, debug::Int64 = 0)
-
-    if iseed != nothing
-        srand(iseed)
-    end
-
-    results = Float64[]
-    va = Float64[]
-    y = 0.
-
-    n = 1
-
-    while true
-        if iseed != nothing
-            pm = UTMPlannerV1(scenario_number = scenario_number, Scenarios = Scenarios)
-        else
-            seed = int64(time())
-            pm = UTMPlannerV1(seed = seed, scenario_number = scenario_number, Scenarios = Scenarios)
-        end
-
-        if debug > 0 && iseed != nothing
-            print(pm.seed, " ")
-        end
-
-        if !bSeq
-            x = simulate(pm, nothing, ts = ts, action = action)
-        else
-            alg = POMCP(depth = 5, default_policy = default_policy, nloop_max = nloop, nloop_min = nloop, c = 2., gamma_ = 0.95, rollout_type = rollout_type, rgamma_ = 0.95)
-            x = simulate(pm, alg, bSeq = bSeq)
-        end
-
-        push!(results, x)
-
-        if debug > 0
-            println(n, " ", x)
-        end
-
-        y += (x - y) / n
-        push!(va, y)
-        
-        if n % 100 == 0
-            if std(va) / abs(va[end]) < RE_threshold
-                break
-            end
-
-            if debug > 0 && n != N
-                println("n: ", n, ", mean: ", neat(va[end]), ", std: ", neat(std(va)), ", RE: ", neat(std(va) / abs(va[end])))
-            end
-        end
-
-        if n == N
-            break
-        end
-
-        n += 1
-    end
-
-    if debug > 0
-        println("n: ", n, ", mean: ", neat(va[end]), ", std: ", neat(std(va)), ", RE: ", neat(std(va) / abs(va[end])))
-    end
-
-    return results
-end
-
-
-if true
+if false
     srand(12)
     sn_list = unique(rand(1024:typemax(Int16), 1100))[1:10]
 
     N = 100
     nloop = 100
 
-    iseed = 36
+    iseed = nothing
+
+    debug = 0
 
     Scenarios = loadScenarios()
 
@@ -662,10 +665,16 @@ if true
         # :default, :default_once, :MC, :inf, :CE_worst, :CE_best
         for rollout_type in [:default, :CE_best, :CE_worst]
             print("rollout_type: ", rollout_type)
+            if debug > 0
+                println()
+            end
 
-            X = evalScenario(sn, N = N, nloop = nloop, iseed = iseed, rollout_type = rollout_type, Scenarios = Scenarios)
+            X = evalScenario(sn, N = N, nloop = nloop, iseed = iseed, rollout_type = rollout_type, Scenarios = Scenarios, debug = debug)
 
-            println(", mean: ", neat(mean(X)), ", std: ", neat(std(X)), ", RE: ", neat(std(X) / mean(X)))
+            if debug == 0
+                print(", ")
+            end
+            println("mean: ", neat(mean(X)), ", std: ", neat(std(X)), ", RE: ", neat(std(X) / abs(mean(X))))
         end
 
         println()
