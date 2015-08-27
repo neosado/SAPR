@@ -381,7 +381,10 @@ function simulate(pm, alg; draw::Bool = false, wait::Bool = false, bSeq::Bool = 
             #println()
 
             if alg.rollout_type == :CE_worst || alg.rollout_type == :CE_best
-                rollout_policy_param = updateRolloutPolicy(pm, alg, rollout_policy_param)
+                if length(alg.CE_samples) != 0
+                    rollout_policy_param = updateRolloutPolicy(pm, alg, rollout_policy_param)
+                end
+
                 if debug > 1
                     if debug > 2
                         R__ = Dict{UPAction, Vector{Float64}}()
