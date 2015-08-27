@@ -3,6 +3,7 @@
 
 using UTMPlannerV1_
 using Scenario_
+using UTMScenarioGenerator_
 
 using POMCP_
 
@@ -12,7 +13,7 @@ using MCTSVisualizer_
 
 using Iterators
 using Base.Test
-using JSON
+using JLD
 
 
 function sampleParticles(pm, b, nsample = 100000)
@@ -85,7 +86,7 @@ function getInitialBelief(pm::UTMPlannerV1)
 
     B = UPState[]
 
-    push!(B, UPState(coord2grid(pm, pm.sc.UAVs[1].start_loc), :flying, :Waypoint1, 0))
+    push!(B, UPState(coord2grid(pm, pm.sc_state.UAVStates[1].curr_loc), pm.sc_state.UAVStates[1].status, pm.sc_state.UAVStates[1].heading, 0))
 
     return UPBeliefParticles(B)
 end
@@ -93,7 +94,7 @@ end
 
 function getInitialState(pm::UTMPlannerV1)
 
-    return UPState(coord2grid(pm, pm.sc.UAVs[1].start_loc), :flying, :Waypoint1, 0)
+    return UPState(coord2grid(pm, pm.sc_state.UAVStates[1].curr_loc), pm.sc_state.UAVStates[1].status, pm.sc_state.UAVStates[1].heading, 0)
 end
 
 
@@ -121,42 +122,28 @@ function test(pm, alg)
 end
 
 
-function simulate(sc::Scenario, sc_state::ScenarioState; draw::Bool = false, wait::Bool = false, bDumpUAVStates::Bool = false)
+function simulate(sc::Scenario, sc_state::ScenarioState; draw::Bool = false, wait::Bool = false)
 
     if draw
         vis = UTMVisualizer(wait = wait)
 
-        visInit(vis, sc)
-        visUpdate(vis, sc)
+        visInit(vis, sc, sc_state)
+        visUpdate(vis, sc, sc_state)
         updateAnimation(vis)
     end
 
     t = 0
 
-    if bDumpUAVStates
-        f = open("UTMPlannerV1.json", "w")
-        S = Any[]
-    end
-
     while !isEndState(sc, sc_state)
         updateState(sc, sc_state, t)
 
-        if bDumpUAVStates
-            push!(S, deepcopy(sc_state.UAVStates))
-        end
-
         if draw
-            visInit(vis, sc)
+            visInit(vis, sc, sc_state)
             visUpdate(vis, sc, sc_state, t)
             updateAnimation(vis)
         end
 
         t += 1
-    end
-
-    if bDumpUAVStates
-        JSON.print(f, S)
-        close(f)
     end
 
     if draw
@@ -355,11 +342,11 @@ function simulate(pm, alg; draw::Bool = false, wait::Bool = false, bSeq::Bool = 
     end
 
     if draw
-        visInit(upv, sc)
-        visUpdate(upv, sc)
+        visInit(upv, sc, sc_state)
+        visUpdate(upv, sc, sc_state)
         updateAnimation(upv)
 
-        visInit(upv, sc)
+        visInit(upv, sc, sc_state)
         visUpdate(upv, sc, sc_state, s.t)
         updateAnimation(upv)
     end
@@ -448,7 +435,7 @@ function simulate(pm, alg; draw::Bool = false, wait::Bool = false, bSeq::Bool = 
         end
 
         if draw
-            visInit(upv, sc)
+            visInit(upv, sc, sc_state)
             visUpdate(upv, sc, sc_state, s_.t, sim = (string(a.action), grid2coord(pm, o.location), r, R))
             updateAnimation(upv)
         end
@@ -547,9 +534,25 @@ if false
     pm = UTMPlannerV1(seed = int64(time()))
 
     pm.sc.UAVs[1].navigation = :GPS_INS
-    pm.sc.sa_dist = 500.
 
-    simulate(pm.sc, pm.sc_state, draw = true, wait = false, bDumpUAVStates = true)
+    simulate(pm.sc, pm.sc_state, draw = true, wait = false)
+end
+
+
+if false
+    srand(12)
+    sn_list = unique(rand(1024:typemax(Int16), 1100))[1:10]
+
+    println("scenarios: ", sn_list)
+    #generateScenario(sn_list, bSave = true)
+
+    Scenarios = loadScenarios()
+    simulateScenario(sn_list, draw = true, wait = false, bSim = false, Scenarios = Scenarios)
+end
+
+
+if false
+    simulateScenario(nothing, draw = true, wait = false, bSim = true)
 end
 
 
@@ -559,60 +562,44 @@ if false
     #seed = 1440609604   # 1000, CE_best, -2081
     #seed = 1440610899   # 1000, CE_best, -154
 
+    scenario_number = nothing
+
     nloop = 100
 
     # :default, :default_once, :MC, :inf, :CE_worst, :CE_best
     rollout_type = :default
 
-    pm = UTMPlannerV1(seed = seed)
-
-    #pm.sc.UAVs[1].navigation = :GPS_INS
-    pm.sc.sa_dist = 500.
+    pm = UTMPlannerV1(seed = seed, scenario_number = scenario_number)
 
     alg = POMCP(depth = 5, default_policy = default_policy, nloop_max = nloop, nloop_min = nloop, c = 2., gamma_ = 0.95, rollout_type = rollout_type, rgamma_ = 0.95, visualizer = MCTSVisualizer())
 
     #test(pm, alg)
     #simulate(pm, nothing, draw = true, wait = false, ts = 0, action = :None_)
-    simulate(pm, alg, draw = true, wait = false, bSeq = true, bStat = false, debug = 3)
+    simulate(pm, alg, draw = true, wait = false, bSeq = true, bStat = false, debug = 1)
 end
 
 
-if false
-    N = 100
-    RE_threshold = 0.1
+function evalScenario(scenario_number::Union(Int64, Nothing) = nothing; N::Int64 = 100, RE_threshold::Float64 = 0.1, bSeq::Bool = true, nloop::Int64 = 100, ts::Int64 = 0, action::Symbol = :None_, iseed::Union(Int64, Nothing) = nothing, rollout_type::Symbol = :default, Scenarios = nothing, debug::Int64 = 0)
 
-    bSeq = true
-    nloop = 100
-
-    ts = 0
-    action = :None_
-
-    #iseed = int64(time())
-
-    # :default, :default_once, :MC, :inf, :CE_worst, :CE_best
-    rollout_type = :default
-
-    if isdefined(:iseed)
-        println("seed: ", iseed)
+    if iseed != nothing
         srand(iseed)
     end
 
+    results = Float64[]
     va = Float64[]
     y = 0.
 
     n = 1
+
     while true
-        if isdefined(:iseed)
-            pm = UTMPlannerV1()
+        if iseed != nothing
+            pm = UTMPlannerV1(scenario_number = scenario_number, Scenarios = Scenarios)
         else
             seed = int64(time())
-            pm = UTMPlannerV1(seed = seed)
+            pm = UTMPlannerV1(seed = seed, scenario_number = scenario_number, Scenarios = Scenarios)
         end
 
-        #pm.sc.UAVs[1].navigation = :GPS_INS
-        pm.sc.sa_dist = 500.
-
-        if !isdefined(:iseed)
+        if debug > 0 && iseed != nothing
             print(pm.seed, " ")
         end
 
@@ -623,7 +610,11 @@ if false
             x = simulate(pm, alg, bSeq = bSeq)
         end
 
-        println(n, " ", x)
+        push!(results, x)
+
+        if debug > 0
+            println(n, " ", x)
+        end
 
         y += (x - y) / n
         push!(va, y)
@@ -633,7 +624,7 @@ if false
                 break
             end
 
-            if n != N
+            if debug > 0 && n != N
                 println("n: ", n, ", mean: ", neat(va[end]), ", std: ", neat(std(va)), ", RE: ", neat(std(va) / abs(va[end])))
             end
         end
@@ -645,7 +636,40 @@ if false
         n += 1
     end
 
-    println("n: ", n, ", mean: ", neat(va[end]), ", std: ", neat(std(va)), ", RE: ", neat(std(va) / abs(va[end])))
+    if debug > 0
+        println("n: ", n, ", mean: ", neat(va[end]), ", std: ", neat(std(va)), ", RE: ", neat(std(va) / abs(va[end])))
+    end
+
+    return results
+end
+
+
+if true
+    srand(12)
+    sn_list = unique(rand(1024:typemax(Int16), 1100))[1:10]
+
+    N = 100
+    nloop = 100
+
+    iseed = 36
+
+    Scenarios = loadScenarios()
+
+    for sn in sn_list
+        println("scenario: ", sn)
+        println("N: ", N, ", nloop: ", nloop, ", iseed: ", iseed)
+
+        # :default, :default_once, :MC, :inf, :CE_worst, :CE_best
+        for rollout_type in [:default, :CE_best, :CE_worst]
+            print("rollout_type: ", rollout_type)
+
+            X = evalScenario(sn, N = N, nloop = nloop, iseed = iseed, rollout_type = rollout_type, Scenarios = Scenarios)
+
+            println(", mean: ", neat(mean(X)), ", std: ", neat(std(X)), ", RE: ", neat(std(X) / mean(X)))
+        end
+
+        println()
+    end
 end
 
 

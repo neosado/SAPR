@@ -32,6 +32,8 @@ type UTMVisualizer <: Visualizer
 
     wait::Bool
 
+    uav_start_locs::Union(Vector{Vector{Float64}}, Nothing)
+
 
     function UTMVisualizer(;wait = false)
 
@@ -45,13 +47,15 @@ type UTMVisualizer <: Visualizer
         self.ims = {}
 
         self.wait = wait
+
+        self.uav_start_locs = nothing
         
         return self
     end
 end
 
 
-function visInit(vis::UTMVisualizer, sc::Scenario)
+function visInit(vis::UTMVisualizer, sc::Scenario, sc_state::ScenarioState)
 
     if vis.fig == nothing
         fig = figure(facecolor = "white")
@@ -100,9 +104,17 @@ function visInit(vis::UTMVisualizer, sc::Scenario)
     for uav in sc.UAVs
         planned_path = ax1[:plot]([uav.start_loc[1], map(x -> x[1], uav.waypoints), uav.end_loc[1]], [uav.start_loc[2], map(x -> x[2], uav.waypoints), uav.end_loc[2]], ".--", color = "0.7")
         append!(artists, planned_path)
+    end
 
+    if vis.uav_start_locs == nothing
+        vis.uav_start_locs = Vector{Float64}[]
+        for uav_state in sc_state.UAVStates
+            push!(vis.uav_start_locs, uav_state.curr_loc)
+        end
+    end
 
-        uav_start_loc = ax1[:plot](uav.start_loc[1], uav.start_loc[2], "k.")
+    for start_loc in vis.uav_start_locs
+        uav_start_loc = ax1[:plot](start_loc[1], start_loc[2], "k.")
         append!(artists, uav_start_loc)
     end
 
@@ -115,7 +127,7 @@ function visInit(vis::UTMVisualizer, sc::Scenario)
 end
 
 
-function visUpdate(vis::UTMVisualizer, sc::Scenario)
+function visUpdate(vis::UTMVisualizer, sc::Scenario, sc_state::ScenarioState)
 
     fig = vis.fig
     ax1 = vis.ax1
@@ -125,9 +137,18 @@ function visUpdate(vis::UTMVisualizer, sc::Scenario)
     push!(vis.artists, text)
 
 
-    for uav in sc.UAVs
-        uav_marker = ax1[:plot](uav.start_loc[1], uav.start_loc[2], "mo", markersize = 5. / min(sc.x, sc.y) * 5280)
+    i = 1
+    for uav_state in sc_state.UAVStates
+        if i == 1
+            marker_style = "bo"
+        else
+            marker_style = "mo"
+        end
+
+        uav_marker = ax1[:plot](uav_state.curr_loc[1], uav_state.curr_loc[2], marker_style, markersize = 5. / min(sc.x, sc.y) * 5280)
         append!(vis.artists, uav_marker)
+
+        i += 1
     end
 
 
@@ -137,14 +158,14 @@ function visUpdate(vis::UTMVisualizer, sc::Scenario)
 end
 
 
-function visUpdate(vis::UTMVisualizer, sc::Scenario, state::ScenarioState, timestep::Int64; sim::Union((ASCIIString, Union(Vector{Float64}, Nothing), Union(Int64, Float64), Union(Int64, Float64)), Nothing) = nothing)
+function visUpdate(vis::UTMVisualizer, sc::Scenario, sc_state::ScenarioState, timestep::Int64; sim::Union((ASCIIString, Union(Vector{Float64}, Nothing), Union(Int64, Float64), Union(Int64, Float64)), Nothing) = nothing)
 
     fig = vis.fig
     ax1 = vis.ax1
 
 
     if sim == nothing
-        text = vis.ax1[:text](0.5, -0.02, "timestep: $timestep, action: Waypoint1, observation: none, reward: 0, total reward: 0", horizontalalignment = "center", verticalalignment = "top", transform = vis.ax1[:transAxes])
+        text = vis.ax1[:text](0.5, -0.02, "timestep: $timestep, action: None_, observation: none, reward: 0, total reward: 0", horizontalalignment = "center", verticalalignment = "top", transform = vis.ax1[:transAxes])
     else
         action, observation, r, R  = sim
         text = vis.ax1[:text](0.5, -0.02, "timestep: $timestep, action: $action, observation: $(int64(observation)), reward: $r, total reward: $R", horizontalalignment = "center", verticalalignment = "top", transform = vis.ax1[:transAxes])
@@ -160,10 +181,15 @@ function visUpdate(vis::UTMVisualizer, sc::Scenario, state::ScenarioState, times
         push!(vis.artists, jamming_area)
     end
 
-    for uav_state in state.UAVStates
-        if uav_state.status == :flying || uav_state.status == :base
+    i = 1
+    for uav_state in sc_state.UAVStates
+        if uav_state.status == :flying
             path_alpha = 1.
-            marker_style = "mo"
+            if i == 1
+                marker_style = "bo"
+            else
+                marker_style = "mo"
+            end
         else
             path_alpha = 0.2
             marker_style = "go"
@@ -172,13 +198,17 @@ function visUpdate(vis::UTMVisualizer, sc::Scenario, state::ScenarioState, times
         uav_path = ax1[:plot]([map(x -> x[1], uav_state.past_locs), uav_state.curr_loc[1]], [map(x -> x[2], uav_state.past_locs), uav_state.curr_loc[2]], "r", alpha = path_alpha)
         append!(vis.artists, uav_path)
 
-        if uav_state.status == :flying || uav_state.status == :base
+        if uav_state.status == :flying || uav_state.status == :landed
             uav_marker = ax1[:plot](uav_state.curr_loc[1], uav_state.curr_loc[2], marker_style, markersize = 5. / min(sc.x, sc.y) * 5280)
             append!(vis.artists, uav_marker)
+        end
 
+        if uav_state.status == :flying
             uav_sa = ax1[:add_patch](patch.Circle((uav_state.curr_loc[1], uav_state.curr_loc[2]), radius = sc.sa_dist / 2, edgecolor = "0.5", facecolor = "none", linestyle = "dotted"))
             push!(vis.artists, uav_sa)
         end
+
+        i += 1
     end
 
 

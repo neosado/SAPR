@@ -161,8 +161,8 @@ function simulate(sc::Scenario, sc_state::ScenarioState; draw::Bool = false, wai
     if draw
         vis = UTMVisualizer(wait = wait)
 
-        visInit(vis, sc)
-        visUpdate(vis, sc)
+        visInit(vis, sc, sc_state)
+        visUpdate(vis, sc, sc_state)
         updateAnimation(vis)
     end
 
@@ -195,7 +195,7 @@ function simulate(sc::Scenario, sc_state::ScenarioState; draw::Bool = false, wai
         end
 
         if draw
-            visInit(vis, sc)
+            visInit(vis, sc, sc_state)
             visUpdate(vis, sc, sc_state, t)
             updateAnimation(vis)
         end

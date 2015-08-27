@@ -17,10 +17,10 @@ using POMDP_
 using Base.Test
 using Iterators
 using Distributions
-using JSON
 
 using UAV_
 using Scenario_
+using UTMScenarioGenerator_
 
 
 import POMDP_.Generative
@@ -143,98 +143,6 @@ end
 
 
 #
-# scenario
-#
-
-function generateScenario()
-
-    # parameters
-
-    params = ScenarioParams()
-
-    params.x = 5010.    # ft
-    params.y = 5010.    # ft
-
-    params.dt = 1       # seconds
-
-    params.cell_towers = Vector{Float64}[[160., 200.], [2100., 4900.], [4800., 500.]]
-
-    params.landing_bases = Vector{Float64}[[1200., 800.], [4000., 1000.], [2000., 3500.]]
-
-    params.sa_dist = 30.    # ft
-
-    # nav1
-    params.loc_err_sigma = 200
-    params.loc_err_bound = params.loc_err_sigma
-
-    UAVs = {{"route" => {[100., 2500.], [2000., 2000.], [3600., 3000.], [5500., 3000.]}, "v" => 40},
-    {"route" => {[3200., 100.], [4400., 1800.], [3800., 3900.], [4400., 5500.]}, "v" => 23},
-    {"route" => {[4900., 2200.], [1600., 1200.], [-500., 900.]}, "v" => 25},
-    {"route" => {[4000., 4900.], [2000., 3000.], [1500., -500.]}, "v" => 50},
-    {"route" => {[400., 4900.], [2700., 4200.], [5500., 4000.]}, "v" => 40}}
-
-    UAVList = UAV[]
-
-    for i = 1:length(UAVs)
-        uav_info = UAVs[i]
-
-        uav = UAV()
-
-        uav.index = i
-
-        route = uav_info["route"]
-
-        uav.start_loc = route[1]
-
-        if length(route) > 2
-            uav.waypoints = Vector{Float64}[]
-            uav.nwaypoint = length(route) - 2
-
-            for j = 2:length(route)-1
-                push!(uav.waypoints, route[j])
-            end
-        end
-
-        uav.end_loc = route[end]
-
-        if haskey(uav_info, "v")
-            uav.velocity = uav_info["v"]
-        else
-            uav.velocity = 40.
-        end
-
-        uav.velocity_min = 20.
-        uav.velocity_max = 60.
-
-        # GPS_INS, deadreckoning or radiolocation
-        if i == 1
-            uav.navigation = :nav1
-        else
-            uav.navigation = :GPS_INS
-        end
-
-        # nav1
-        uav.IMU_gyr_sigma = 0.1
-
-        push!(UAVList, uav)
-    end
-
-    params.UAVs = UAV[]
-    params.nUAV = length(UAVList)
-
-    for i = 1:params.nUAV
-        push!(params.UAVs, UAVList[i])
-    end
-
-    sc = Scenario(params)
-
-    sc_state = ScenarioState(sc)
-
-    return sc, sc_state
-end
-
-
-#
 # UTMPlannerV1
 #
 
@@ -267,7 +175,7 @@ type UTMPlannerV1 <: POMDP
     reward_norm_const::Float64
 
 
-    function UTMPlannerV1(; seed::Union(Int64, Nothing) = nothing)
+    function UTMPlannerV1(; seed::Union(Int64, Nothing) = nothing, scenario_number::Union(Int64, Nothing) = nothing, Scenarios = nothing)
 
         self = new()
 
@@ -285,7 +193,7 @@ type UTMPlannerV1 <: POMDP
 
         end
 
-        self.sc, self.sc_state = generateScenario()
+        self.sc, self.sc_state, self.UAVStates, _ = generateScenario(scenario_number, Scenarios = Scenarios)
         self.sc.seed = seed
 
         self.dt = 5
@@ -314,8 +222,6 @@ type UTMPlannerV1 <: POMDP
             end
         end
         self.obsProbMat /= ((sum(self.obsProbMat) - sum(self.obsProbMat[:, 1])) * 4 + self.obsProbMat[1, 1])
-
-        self.UAVStates = JSON.parsefile("UTMPlannerV1.json")
 
         self.reward_functype = :type2
         self.reward_norm_const = 1000.
@@ -381,11 +287,7 @@ function restoreUAVStates(up::UTMPlannerV1, t::Int64)
     end
 
     for i = 2:up.sc.nUAV
-        up.sc_state.UAVStates[i].index = up.UAVStates[t + 1][i]["index"]
-        up.sc_state.UAVStates[i].status = up.UAVStates[t + 1][i]["status"]
-        up.sc_state.UAVStates[i].curr_loc = copy(up.UAVStates[t + 1][i]["curr_loc"])
-        up.sc_state.UAVStates[i].past_locs = deepcopy(up.UAVStates[t + 1][i]["past_locs"])
-        up.sc_state.UAVStates[i].heading = up.UAVStates[t + 1][i]["heading"]
+        up.sc_state.UAVStates[i] = up.UAVStates[t + 1][i]
     end
 end
 
