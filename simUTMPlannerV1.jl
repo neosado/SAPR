@@ -380,6 +380,10 @@ function simulate(pm, alg; draw::Bool = false, wait::Bool = false, bSeq::Bool = 
             #println("B: ", alg.B)
             #println()
 
+            if a.action == s.heading
+                a = UPAction(:None_)
+            end
+
             if alg.rollout_type == :CE_worst || alg.rollout_type == :CE_best
                 if length(alg.CE_samples) != 0
                     rollout_policy_param = updateRolloutPolicy(pm, alg, rollout_policy_param)
@@ -539,9 +543,11 @@ function evalScenario(scenario_number::Union(Int64, Nothing) = nothing; N::Int64
         srand(iseed)
     end
 
-    results = Float64[]
-    va = Float64[]
-    y = 0.
+    X = Float64[]
+
+    meanX = 0.
+    ssX = 0.
+    RE = 0.
 
     n = 1
 
@@ -565,22 +571,27 @@ function evalScenario(scenario_number::Union(Int64, Nothing) = nothing; N::Int64
             x = simulate(pm, alg, bSeq = bSeq)
         end
 
-        push!(results, x)
+        push!(X, x)
 
         if debug > 0
             println(n, " ", x)
         end
 
-        y += (x - y) / n
-        push!(va, y)
-        
+        meanX += (x - meanX) / n
+        ssX += x * x
+
+        if n > 1
+            varX = (ssX - n * (meanX * meanX)) / ((n - 1) * n)
+            RE = sqrt(varX) / meanX
+        end
+
         if n % 100 == 0
-            if std(va) / abs(va[end]) < RE_threshold
+            if RE < RE_threshold
                 break
             end
 
             if debug > 0 && n != N
-                println("n: ", n, ", mean: ", neat(va[end]), ", std: ", neat(std(va)), ", RE: ", neat(std(va) / abs(va[end])))
+                println("n: ", n, ", mean: ", neat(meanX), ", std: ", neat(sqrt(varX)), ", RE: ", RE)
             end
         end
 
@@ -592,10 +603,10 @@ function evalScenario(scenario_number::Union(Int64, Nothing) = nothing; N::Int64
     end
 
     if debug > 0
-        println("n: ", n, ", mean: ", neat(va[end]), ", std: ", neat(std(va)), ", RE: ", neat(std(va) / abs(va[end])))
+        println("n: ", n, ", mean: ", neat(meanX), ", std: ", neat(sqrt(varX)), ", RE: ", RE)
     end
 
-    return results
+    return X
 end
 
 
@@ -644,18 +655,16 @@ if false
 
     #test(pm, alg)
     #simulate(pm, nothing, draw = true, wait = false, ts = 0, action = :None_)
-    simulate(pm, alg, draw = true, wait = false, bSeq = true, bStat = false, debug = 1)
+    simulate(pm, alg, draw = true, wait = true, bSeq = true, bStat = false, debug = 1)
 end
 
 
 if false
-    srand(12)
+    srand(int64(time()))
     sn_list = unique(rand(1024:typemax(Int16), 1100))[1:10]
 
     N = 100
     nloop = 100
-
-    iseed = nothing
 
     debug = 0
 
@@ -663,7 +672,9 @@ if false
 
     for sn in sn_list
         println("scenario: ", sn)
-        println("N: ", N, ", nloop: ", nloop, ", iseed: ", iseed)
+        println("N: ", N, ", nloop: ", nloop)
+
+        iseed = sn
 
         # :default, :default_once, :MC, :inf, :CE_worst, :CE_best
         for rollout_type in [:default, :CE_best, :CE_worst]

@@ -498,7 +498,7 @@ function simulateScenario(scenario_number::Union(Int64, Vector{Int64}, Nothing) 
 
         sc, sc_state, UAVStates, _ = generateScenario(sn, Scenarios = Scenarios)
 
-        vis = UTMVisualizer()
+        vis = UTMVisualizer(wait = wait)
 
         if draw
             visInit(vis, sc, sc_state)
