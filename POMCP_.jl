@@ -34,7 +34,9 @@ type POMCP <: MCTS
     N::Dict{(History, Action), Int64}
     Ns::Dict{History, Int64}
     Q::Dict{(History, Action), Float64}
+
     B::Dict{History, Vector{State}}
+    Os::Dict{(History, Action), Vector{Observation}}
 
     nloop_max::Int64
     nloop_min::Int64
@@ -80,6 +82,7 @@ type POMCP <: MCTS
         self.Q = Dict{(History, Action), Float64}()
 
         self.B = Dict{History, Vector{State}}()
+        self.Os = Dict{(History, Action), Vector{Observation}}()
 
         self.nloop_max = nloop_max
         self.nloop_min = nloop_min
@@ -260,7 +263,7 @@ function rollout(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64; debug::I
 end
 
 
-function simulate(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64; bStat::Bool = false, debug::Int64 = 0)
+function simulate(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64; variant::Union(Dict{ASCIIString, Any}, Nothing) = nothing, bStat::Bool = false, debug::Int64 = 0)
 
     if alg.visualizer != nothing
         updateTree(alg.visualizer, :start_sim, s)
@@ -276,6 +279,8 @@ function simulate(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64; bStat::
                 else
                     alg.Q[(h, a)] = -Inf
                 end
+
+                alg.Os[(h, a)] = Vector{Observation}[]
             end
 
             alg.Ns[h] = 1
@@ -309,6 +314,8 @@ function simulate(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64; bStat::
             else
                 alg.Q[(h, a)] = -Inf
             end
+
+            alg.Os[(h, a)] = Vector{Observation}[]
         end
 
         alg.Ns[h] = 1
@@ -353,6 +360,22 @@ function simulate(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64; bStat::
 
     s_, o, r = Generative(pm, s, a)
 
+    if variant != nothing
+        if variant["type"] == :SparseUCT
+            if length(alg.Os[(h, a)]) < variant["nObsMax"]
+                push!(alg.Os[(h, a)], o)
+            else
+                o = alg.Os[(h, a)][rand(1:length(alg.Os[(h, a)]))]
+            end
+        elseif variant["type"] == :ProgressiveWidening
+            if length(alg.Os[(h, a)]) < ceil(variant["c"] * (alg.N[(h, a)] + 1) ^ variant["alpha"])
+                push!(alg.Os[(h, a)], o)
+            else
+                o = alg.Os[(h, a)][rand(1:length(alg.Os[(h, a)]))]
+            end
+        end
+    end
+
     if debug > 2
         println("    Q: ", neat(Q * pm.reward_norm_const), ", Qv: ", neat(Qv), ", (a, o): {", a, ", ", o, "}, s_: ", s_, ", r: ", neat(r * pm.reward_norm_const))
     end
@@ -361,7 +384,7 @@ function simulate(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64; bStat::
         updateTree(alg.visualizer, :before_sim, s, a, o)
     end
 
-    q = r + alg.gamma_ * simulate(alg, pm, s_, History([h.history, a, o]), d - 1, debug = debug)
+    q = r + alg.gamma_ * simulate(alg, pm, s_, History([h.history, a, o]), d - 1, variant = variant, debug = debug)
 
     alg.N[(h, a)] += 1
     alg.Ns[h] += 1
@@ -370,7 +393,7 @@ function simulate(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64; bStat::
     push!(alg.B[h], s)
 
     if alg.visualizer != nothing
-        updateTree(alg.visualizer, :after_sim, s, a, r, q, alg.N[(h, a)], alg.Ns[h], alg.Q[(h, a)])
+        updateTree(alg.visualizer, :after_sim, s, a, r * pm.reward_norm_const, q * pm.reward_norm_const, alg.N[(h, a)], alg.Ns[h], alg.Q[(h, a)] * pm.reward_norm_const)
     end
 
     if bStat && d == alg.depth
@@ -381,7 +404,7 @@ function simulate(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64; bStat::
 end
 
 
-function selectAction(alg::POMCP, pm::POMDP, b::Belief; bStat::Bool = false, debug::Int64 = 0)
+function selectAction(alg::POMCP, pm::POMDP, b::Belief; variant::Union(Dict{ASCIIString, Any}, Nothing) = nothing, bStat::Bool = false, debug::Int64 = 0)
 
     if alg.visualizer != nothing
         initTree(alg.visualizer)
@@ -422,9 +445,9 @@ function selectAction(alg::POMCP, pm::POMDP, b::Belief; bStat::Bool = false, deb
         end
 
         if !bStat
-            simulate(alg, pm, s, h, alg.depth, debug = debug)
+            simulate(alg, pm, s, h, alg.depth, variant = variant, debug = debug)
         else
-            ret = simulate(alg, pm, s, h, alg.depth, bStat = true, debug = debug)
+            ret = simulate(alg, pm, s, h, alg.depth, variant = variant, bStat = true, debug = debug)
             if length(ret) == 2
                 q, a = ret
                 push!(Qs[a], q * pm.reward_norm_const)
@@ -487,6 +510,7 @@ function reinitialize(alg::POMCP, a::Action, o::Observation)
     Ns_new = Dict{History, Int64}()
     Q_new = Dict{(History, Action), Float64}()
     B_new = Dict{History, Vector{State}}()
+    Os_new = Dict{(History, Action), Vector{Observation}}()
 
     for h in keys(alg.T)
         if length(h.history) > 0 && h.history[1] == a && h.history[2] == o
@@ -506,6 +530,7 @@ function reinitialize(alg::POMCP, a::Action, o::Observation)
         if length(h.history) > 0 && h.history[1] == a && h.history[2] == o
             N_new[(History(h.history[3:end]), action)] = alg.N[key]
             Q_new[(History(h.history[3:end]), action)] = alg.Q[key]
+            Os_new[(History(h.history[3:end]), action)] = alg.Os[key]
         end
     end
 
@@ -514,6 +539,7 @@ function reinitialize(alg::POMCP, a::Action, o::Observation)
     alg.Ns = Ns_new
     alg.Q = Q_new
     alg.B = B_new
+    alg.Os = Os_new
 
     alg.reuse = true
 
@@ -530,6 +556,7 @@ function initialize(alg::POMCP)
     alg.Ns = Dict{History, Int64}()
     alg.Q = Dict{(History, Action), Float64}()
     alg.B = Dict{History, Vector{State}}()
+    alg.Os = Dict{(History, Action), Vector{Observation}}()
 
     alg.reuse = false
 

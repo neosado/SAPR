@@ -19,9 +19,9 @@ end
 function sampleFromProb(p)
 
     p_cs = cumsum(p)
-    @test p_cs[length(p)] == 1.
+    @test_approx_eq p_cs[length(p)] 1.
 
-    index = -1
+    index = nothing
     rv = rand()
 
     for i = 1:length(p_cs)

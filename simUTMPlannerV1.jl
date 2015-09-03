@@ -322,7 +322,7 @@ function updateRolloutPolicy(pm::UTMPlannerV1, alg::POMCP, prev_dist_param::Vect
 end
 
 
-function simulate(pm, alg; draw::Bool = false, wait::Bool = false, bSeq::Bool = false, ts::Int64 = 0, action::Symbol = :None_, bStat::Bool = false, debug::Int64 = 0)
+function simulate(pm, alg; draw::Bool = false, wait::Bool = false, bSeq::Bool = false, ts::Int64 = 0, action::Symbol = :None_, variant::Union(Dict{ASCIIString, Any}, Nothing) = nothing, bStat::Bool = false, debug::Int64 = 0)
 
     sc = pm.sc
     sc_state = pm.sc_state
@@ -362,9 +362,9 @@ function simulate(pm, alg; draw::Bool = false, wait::Bool = false, bSeq::Bool = 
 
             pm.sc.bMCTS = true
             if !bStat
-                a, Q = selectAction(alg, pm, b, debug = debug)
+                a, Q = selectAction(alg, pm, b, variant = variant, debug = debug)
             else
-                a, Q, Qs = selectAction(alg, pm, b, bStat = true, debug = debug)
+                a, Q, Qs = selectAction(alg, pm, b, variant = variant, bStat = true, debug = debug)
 
                 for a__ in  pm.actions
                     data = Qs[a__]
@@ -421,6 +421,13 @@ function simulate(pm, alg; draw::Bool = false, wait::Bool = false, bSeq::Bool = 
         #r = reward(pm, s, a)
 
         s_, o, r = Generative(pm, s, a)
+
+        # XXX is it a right way?
+        #if variant != nothing && variant["type"] == :SparseUCT
+        #    if !(o in alg.Os[(History(), a)])
+        #        o = alg.Os[(History(), a)][rand(1:length(alg.Os[(History(), a)]))]
+        #    end
+        #end
 
         R += r
 
@@ -537,7 +544,7 @@ function default_policy(pm::UTMPlannerV1, s::UPState)
 end
 
 
-function evalScenario(scenario_number::Union(Int64, Nothing) = nothing; N::Int64 = 100, RE_threshold::Float64 = 0.1, bSeq::Bool = true, nloop::Int64 = 100, ts::Int64 = 0, action::Symbol = :None_, iseed::Union(Int64, Nothing) = nothing, rollout_type::Symbol = :default, Scenarios = nothing, debug::Int64 = 0)
+function evalScenario(scenario_number::Union(Int64, Nothing) = nothing; N::Int64 = 100, RE_threshold::Float64 = 0.1, bSeq::Bool = true, nloop::Int64 = 100, ts::Int64 = 0, action::Symbol = :None_, rollout_type::Symbol = :default, variant::Union(Dict{ASCIIString, Any}, Nothing) = nothing, Scenarios = nothing, iseed::Union(Int64, Nothing) = nothing, debug::Int64 = 0)
 
     if iseed != nothing
         srand(iseed)
@@ -547,6 +554,7 @@ function evalScenario(scenario_number::Union(Int64, Nothing) = nothing; N::Int64
 
     meanX = 0.
     ssX = 0.
+    varX = 0.
     RE = 0.
 
     n = 1
@@ -565,10 +573,10 @@ function evalScenario(scenario_number::Union(Int64, Nothing) = nothing; N::Int64
         end
 
         if !bSeq
-            x = simulate(pm, nothing, ts = ts, action = action)
+            x = simulate(pm, nothing, ts = ts, action = action, variant = variant)
         else
-            alg = POMCP(depth = 5, default_policy = default_policy, nloop_max = nloop, nloop_min = nloop, c = 2., gamma_ = 0.95, rollout_type = rollout_type, rgamma_ = 0.95)
-            x = simulate(pm, alg, bSeq = bSeq)
+            alg = POMCP(depth = 5, default_policy = default_policy, nloop_max = nloop, nloop_min = nloop, c = sqrt(2), gamma_ = 0.95, rollout_type = rollout_type, rgamma_ = 0.95)
+            x = simulate(pm, alg, bSeq = bSeq, variant = variant)
         end
 
         push!(X, x)
@@ -582,7 +590,7 @@ function evalScenario(scenario_number::Union(Int64, Nothing) = nothing; N::Int64
 
         if n > 1
             varX = (ssX - n * (meanX * meanX)) / ((n - 1) * n)
-            RE = sqrt(varX) / meanX
+            RE = sqrt(varX) / abs(meanX)
         end
 
         if n % 100 == 0
@@ -632,34 +640,44 @@ end
 
 
 if false
+    #simulateScenario()
     simulateScenario(nothing, draw = true, wait = false, bSim = true)
+    #for i = 1:10
+    #    simulateScenario(nothing, draw = true, wait = false, bSim = true)
+    #end
 end
 
 
 if false
-    seed = int64(time())
-    #seed = 1440401261   # 100
-    #seed = 1440609604   # 1000, CE_best, -2081
-    #seed = 1440610899   # 1000, CE_best, -154
+    #seed = int64(time())
+    seed = 12
 
-    scenario_number = nothing
+    #scenario_number = nothing
+    scenario_number = 1
+    #scenario_number = 28440
 
     nloop = 100
+    #nloop = 1000
 
     # :default, :default_once, :MC, :inf, :CE_worst, :CE_best
-    rollout_type = :default
+    rollout_type = :default_once
+
+    variant = nothing
+    #variant = ["type" => :SparseUCT, "nObsMax" => 4]
+    #variant = ["type" => :ProgressiveWidening, "c" => 2, "alpha" => 0.4]
 
     pm = UTMPlannerV1(seed = seed, scenario_number = scenario_number)
 
-    alg = POMCP(depth = 5, default_policy = default_policy, nloop_max = nloop, nloop_min = nloop, c = 2., gamma_ = 0.95, rollout_type = rollout_type, rgamma_ = 0.95, visualizer = MCTSVisualizer())
+    alg = POMCP(depth = 5, default_policy = default_policy, nloop_max = nloop, nloop_min = nloop, c = sqrt(2), gamma_ = 0.95, rollout_type = rollout_type, rgamma_ = 0.95, visualizer = MCTSVisualizer())
 
     #test(pm, alg)
     #simulate(pm, nothing, draw = true, wait = false, ts = 0, action = :None_)
-    simulate(pm, alg, draw = true, wait = true, bSeq = true, bStat = false, debug = 1)
+    simulate(pm, alg, draw = true, wait = true, bSeq = true, variant = variant, bStat = false, debug = 3)
 end
 
 
-if false
+function Experiment01()
+
     srand(int64(time()))
     sn_list = unique(rand(1024:typemax(Int16), 1100))[1:10]
 
@@ -694,5 +712,55 @@ if false
         println()
     end
 end
+#Experiment01()
+
+
+function Experiment02()
+
+    srand(int64(time()))
+    #sn_list = unique(rand(1024:typemax(Int16), 1100))[1:10]
+    sn_list = [28440, 19665, 4188, 7798, 6623, 24211, 20763, 1365, 24156, 30545]
+    #sn_list = 1
+
+    N = 100
+    nloop = 100
+
+    rollout_type = :default_once
+
+    sparse = ["type" => :SparseUCT, "nObsMax" => 4]
+    pw = ["type" => :ProgressiveWidening, "c" => 2, "alpha" => 0.4]
+
+    debug = 0
+
+    Scenarios = loadScenarios()
+
+    for sn in sn_list
+        println("scenario: ", sn)
+        print("N: ", N, ", nloop: ", nloop)
+
+        iseed = sn
+
+        #for variant in [nothing, sparse, pw]
+        #for variant in [pw]
+        for nObsMax in [1, 2, 4, 6, 8, 10, 12]
+            variant = sparse
+            variant["nObsMax"] = nObsMax
+        #for param in [(1, 0.4), (2, 0.4), (4, 0.4), (6, 0.4)]
+        #for param in [(2, 0.1), (2, 0.2), (2, 0.4), (2, 0.6)]
+            #variant = pw
+            #variant["c"] = param[1]
+            #variant["alpha"] = param[2]
+
+            println(", variant: ", variant)
+
+            X = evalScenario(sn, N = N, nloop = nloop, rollout_type = rollout_type, variant = variant, Scenarios = Scenarios, iseed = iseed, debug = debug)
+
+            println("mean: ", neat(mean(X)), ", std: ", neat(std(X) / sqrt(length(X))), ", RE: ", neat((std(X ) / length(X)) / abs(mean(X))))
+        end
+
+        println()
+    end
+end
+#Experiment02()
 
 

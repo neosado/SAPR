@@ -208,6 +208,12 @@ function updateState(uav::UAV, state::UAVState, t::Int64)
             push!(state.past_locs, state.curr_loc)
         end
 
+        bInside = false
+
+        if state.curr_loc[1] >= 0 && state.curr_loc[1] <= uav.sc.x && state.curr_loc[2] >= 0 && state.curr_loc[2] <= uav.sc.y
+            bInside = true
+        end
+
         if uav.navigation == :GPS_INS
             updateStateGPSINS(uav, state)
 
@@ -235,7 +241,10 @@ function updateState(uav::UAV, state::UAVState, t::Int64)
         end
 
         if curr_loc[1] < 0 || curr_loc[1] > uav.sc.x || curr_loc[2] < 0 || curr_loc[2] > uav.sc.y
-            state.status = :out_of_area
+            if bInside
+                # assume that planned path does not come back in the area once it goes out of the area
+                state.status = :out_of_area
+            end
         end
     end
 end

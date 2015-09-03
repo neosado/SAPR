@@ -7,9 +7,9 @@ import Base.isequal, Base.hash, Base.copy
 import Base.start, Base.done, Base.next
 
 export UTMPlannerV1, UPState, UPAction, UPObservation, UPBelief, UPBeliefVector, UPBeliefParticles, History
-#export UPStateIter, UPObservationIter
+export UPStateIter, UPObservationIter
 export Generative, nextState, observe, reward, isEnd, isFeasible, sampleBelief, updateBelief
-#export tranProb, obsProb
+export tranProb, obsProb
 export coord2grid, grid2coord
 
 
@@ -49,25 +49,11 @@ end
 
 type UPStateIter
 
-    nx::Int64
-    ny::Int64
-    dt::Int64
-    t_max::Int64
+    function UPStateIter()
 
-    function UPStateIter(nx, ny, dt, t_max)
-
-        self = new()
-
-        self.nx = nx
-        self.ny = ny
-        self.dt = dt
-        self.t_max = t_max
-
-        return self
+        error("UPStateIter has not been implemented yet")
     end
 end
-
-# TODO implement start, done, next
 
 
 immutable UPAction <: Action
@@ -83,51 +69,10 @@ end
 
 type UPObservationIter
 
-    nx::Int64
-    ny::Int64
-
     function UPObservationIter(nx, ny)
 
-        self = new()
-
-        self.nx = nx
-        self.ny = ny
-
-        return self
+        error("UPObservationIter has not been implemented yet")
     end
-end
-
-# XXX observations can be outside of the box
-function start(iter::UPObservationIter)
-
-    state = (1, 1)
-end
-
-function done(iter::UPObservationIter, state)
-
-    x, y = state
-
-    if y > iter.ny
-        return true
-    end
-
-    return false
-end
-
-function next(iter::UPObservationIter, state)
-
-    x, y = state
-
-    item = UPObservation((x, y))
-
-    if x + 1 > iter.nx
-        x = 1
-        y += 1
-    else
-        x += 1
-    end
-
-    return item, (x, y)
 end
 
 
@@ -158,13 +103,13 @@ type UTMPlannerV1 <: POMDP
     cell_len::Float64   # ft
     n::Int64
 
-    states::UPStateIter
+    states::Union(UPStateIter, Nothing)
     nState::Int64
 
     actions::Vector{UPAction}
     nAction::Int64
 
-    observations::UPObservationIter
+    observations::Union(UPObservationIter, Nothing)
     nObservation::Int64
 
     obsProbMat::Array{Float64, 2}
@@ -193,7 +138,7 @@ type UTMPlannerV1 <: POMDP
 
         end
 
-        self.sc, self.sc_state, self.UAVStates, _ = generateScenario(scenario_number, Scenarios = Scenarios)
+        self.sc, self.sc_state, self.UAVStates, _ = generateScenario(scenario_number, navigation = :nav1, Scenarios = Scenarios)
         self.sc.seed = seed
 
         self.dt = 5
@@ -205,23 +150,26 @@ type UTMPlannerV1 <: POMDP
         @assert self.n % 2 == 1
 
         # XXX think about how to handle time in state
-        self.states = UPStateIter(self.n, self.n, self.dt, 237.)
-        self.nState = self.n * self.n
+        self.states = nothing
+        self.nState = 0
 
-        self.actions = [UPAction(:None_), UPAction(:Waypoint1), UPAction(:Waypoint2), UPAction(:End), UPAction(:Base1), UPAction(:Base2), UPAction(:Base3)]
+        if self.sc.UAVs[1].nwaypoint > 2
+            self.actions = [UPAction(:None_), UPAction(:Waypoint1), UPAction(:Waypoint2), UPAction(:Waypoint3), UPAction(:Base1), UPAction(:Base2), UPAction(:Base3)]
+        else
+            self.actions = [UPAction(:None_), UPAction(:Waypoint1), UPAction(:Waypoint2), UPAction(:End), UPAction(:Base1), UPAction(:Base2), UPAction(:Base3)]
+        end
         self.nAction = length(self.actions)
 
-        self.observations = UPObservationIter(self.n, self.n)
-        self.nObservation = self.n * self.n
+        self.observations = nothing
+        self.nObservation = 0
 
         self.obsProbMat = zeros(self.n, self.n)
         D = MvNormal(zeros(2), self.sc.loc_err_sigma)
         for j = 1:self.n
             for i = 1:self.n
-                self.obsProbMat[i, j] = pdf(D, [(i - 1) * 30, (j - 1) * 30])
+                self.obsProbMat[i, j] = pdf(D, [(i - 1) * self.cell_len, (j - 1) * self.cell_len]) * (self.cell_len * self.cell_len)
             end
         end
-        self.obsProbMat /= ((sum(self.obsProbMat) - sum(self.obsProbMat[:, 1])) * 4 + self.obsProbMat[1, 1])
 
         self.reward_functype = :type2
         self.reward_norm_const = 1000.

@@ -94,9 +94,11 @@ function visInit(vis::UTMVisualizer, sc::Scenario, sc_state::ScenarioState)
 
 
     if sc.landing_bases != nothing
+        i = 1
         for (x, y) in sc.landing_bases
-            landing_base = ax1[:text](x, y, "H", horizontalalignment = "center", verticalalignment = "center")
+            landing_base = ax1[:text](x, y, "H" * string(i), horizontalalignment = "center", verticalalignment = "center")
             push!(artists, landing_base)
+            i += 1
         end
     end
 
@@ -147,6 +149,11 @@ function visUpdate(vis::UTMVisualizer, sc::Scenario, sc_state::ScenarioState)
 
         uav_marker = ax1[:plot](uav_state.curr_loc[1], uav_state.curr_loc[2], marker_style, markersize = 5. / min(sc.x, sc.y) * 5280)
         append!(vis.artists, uav_marker)
+
+        if uav_state.curr_loc[1] >= 0 && uav_state.curr_loc[1] <= sc.x && uav_state.curr_loc[2] >= 0 && uav_state.curr_loc[2] <= sc.y
+            uav_marker_text = ax1[:text](uav_state.curr_loc[1] + 70, uav_state.curr_loc[2] + 70, string(i), size = 10, horizontalalignment = "center", verticalalignment = "center")
+            push!(vis.artists, uav_marker_text)
+        end
 
         i += 1
     end
@@ -201,6 +208,11 @@ function visUpdate(vis::UTMVisualizer, sc::Scenario, sc_state::ScenarioState, ti
         if uav_state.status == :flying || uav_state.status == :landed
             uav_marker = ax1[:plot](uav_state.curr_loc[1], uav_state.curr_loc[2], marker_style, markersize = 5. / min(sc.x, sc.y) * 5280)
             append!(vis.artists, uav_marker)
+
+            if uav_state.curr_loc[1] >= 0 && uav_state.curr_loc[1] <= sc.x && uav_state.curr_loc[2] >= 0 && uav_state.curr_loc[2] <= sc.y
+                uav_marker_text = ax1[:text](uav_state.curr_loc[1] + 70, uav_state.curr_loc[2] + 70, string(i), size = 10, horizontalalignment = "center", verticalalignment = "center")
+                push!(vis.artists, uav_marker_text)
+            end
         end
 
         if uav_state.status == :flying

@@ -75,21 +75,21 @@ function generateScenarioWithParams(params::ScenarioParams, UAVInfo; navigation:
     for i = 1:sc.nUAV
         if haskey(UAVInfo[i], "uav_state")
             uav_state = UAVInfo[i]["uav_state"]
-            rindex = uav_state["rindex"]
+            heading = uav_state["heading"]
             curr_loc = uav_state["curr_loc"]
 
             sc_state.UAVStates[i].curr_loc = curr_loc
 
             push!(sc_state.UAVStates[i].past_locs, sc.UAVs[i].start_loc)
-            for j = 1:rindex-1
+            for j = 1:heading-2
                 push!(sc_state.UAVStates[i].past_locs, sc.UAVs[i].waypoints[j])
             end
             push!(sc_state.UAVStates[i].past_locs, curr_loc)
 
-            if rindex - 1 == sc.UAVs[i].nwaypoint
+            if heading == sc.UAVs[i].nwaypoint + 2
                 sc_state.UAVStates[i].heading = symbol("End")
             else
-                sc_state.UAVStates[i].heading = symbol("Waypoint" * string(rindex))
+                sc_state.UAVStates[i].heading = symbol("Waypoint" * string(heading - 1))
             end
         end
     end
@@ -135,6 +135,18 @@ function scenario_1()
 end
 
 
+function checkLocationInside(x, y, loc)
+
+    bInside = false
+
+    if loc[1] >= 0 && loc[1] <= x && loc[2] >= 0 && loc[2] <= y
+        bInside = true
+    end
+
+    return bInside
+end
+
+
 function generateBases(;x::Float64 = 0., y::Float64 = 0., margin::Float64 = 0., nbase::Int64 = 0, min_dist::Float64 = 0.)
 
     bases = Vector{Float64}[]
@@ -161,14 +173,14 @@ function generateBases(;x::Float64 = 0., y::Float64 = 0., margin::Float64 = 0., 
             end
         end
 
-        push!(bases, [x_, y_])
+        push!(bases, round([x_, y_]))
     end
 
     return bases
 end
 
 
-function generateUAV(;x::Float64 = 0., y::Float64 = 0., margin::Float64 = 0., dist_mean::Float64 = 0., dist_noise::Float64 = 0., angle_noise::Float64 = 0., v_mean::Float64 = 0., v_min::Float64 = 0., v_max::Float64 = 0.)
+function generateUAV(; x::Float64 = 0., y::Float64 = 0., margin::Float64 = 0., dist_mean::Float64 = 0., dist_noise::Float64 = 0., angle_noise::Float64 = 0., v_mean::Float64 = 0., v_min::Float64 = 0., v_max::Float64 = 0.)
 
     start_side = rand(1:4)
 
@@ -190,7 +202,7 @@ function generateUAV(;x::Float64 = 0., y::Float64 = 0., margin::Float64 = 0., di
         u = [0., -1.]
     end
 
-    start_loc = [x_, y_]
+    start_loc = round([x_, y_])
 
     route = nothing
 
@@ -223,9 +235,9 @@ function generateUAV(;x::Float64 = 0., y::Float64 = 0., margin::Float64 = 0., di
 
             u_ = [cosd(angle) -sind(angle); sind(angle) cosd(angle)] * u_
 
-            next_loc = curr_loc + u_ * d
+            next_loc = round(curr_loc + u_ * d)
 
-            if next_loc[1] < 0 || next_loc[1] > x || next_loc[2] < 0 || next_loc[2] > y
+            if !checkLocationInside(x, y, next_loc)
                 push!(route, next_loc)
                 break
             elseif next_loc[1] < margin || next_loc[1] > x - margin || next_loc[2] < margin || next_loc[2] > y - margin
@@ -234,7 +246,7 @@ function generateUAV(;x::Float64 = 0., y::Float64 = 0., margin::Float64 = 0., di
 
             push!(route, next_loc)
 
-            if next_loc[1] >= 0 && next_loc[1] <= x && next_loc[2] >= 0 && next_loc[2] <= y
+            if checkLocationInside(x, y, next_loc)
                 bInside = true
             end
 
@@ -247,7 +259,7 @@ function generateUAV(;x::Float64 = 0., y::Float64 = 0., margin::Float64 = 0., di
     end
 
     v_noise = max(v_mean - v_min, v_max - v_mean)
-    v = v_mean + randn() * v_noise / 2
+    v = round(v_mean + randn() * v_noise / 2)
     if v < v_min
         v = v_min
     elseif v > v_max
@@ -257,6 +269,70 @@ function generateUAV(;x::Float64 = 0., y::Float64 = 0., margin::Float64 = 0., di
     uav_info = {"route" => route, "v" => v}
 
     return uav_info
+end
+
+
+function getInitLocation(params::ScenarioParams, route::Vector{Vector{Float64}}, rindex_noise::Int64)
+
+    # assume that whole planned path is within the area except start and end points
+
+    rindex = 1 + int64(floor(abs(randn()) * rindex_noise / 2))
+
+    if rindex == 1
+        rn = 0.
+
+        while true
+            curr_loc = route[rindex] + (route[rindex + 1] - route[rindex]) * rn
+
+            if checkLocationInside(params.x, params.y, curr_loc)
+                curr_loc += (route[rindex + 1] - route[rindex]) * (1 - rn) * rand()
+                break
+            end
+
+            rn += 0.1
+
+            @assert rn <= 1.
+        end
+
+    elseif rindex > length(route) - 2
+        rindex = length(route) - 1
+        curr_loc = route[rindex]
+
+    else
+        curr_loc = route[rindex] + (route[rindex + 1] - route[rindex]) * rand()
+
+    end
+
+    return curr_loc, rindex + 1
+end
+
+
+function getClosestPoint(sc::Scenario, sc_state::ScenarioState, uav_number::Int64)
+
+    min_dist = Inf
+    loc = nothing
+    loc_ = nothing
+
+    t = 0
+
+    while !isEndState(sc, sc_state)
+        updateState(sc, sc_state, t)
+
+        state = sc_state.UAVStates[uav_number]
+        state_ = sc_state.UAVStates[1]
+
+        if state.status == :flying && state_.status == :flying
+            if norm(state.curr_loc - state_.curr_loc) < min_dist
+                min_dist = norm(state.curr_loc - state_.curr_loc)
+                loc = state.curr_loc
+                loc_ = state_.curr_loc
+            end
+        end
+
+        t += 1
+    end
+
+    return loc, loc_, min_dist
 end
 
 
@@ -338,43 +414,82 @@ function generateScenario_(seed::Int64)
     params.loc_err_sigma = 200
     params.loc_err_bound = params.loc_err_sigma
 
+    # parameters for generating scenario
     nUAV = 5
+    min_route_points = 4
+    rindex_noise = 2
+    nNearbyUAV = 2
+    sep_dist_margin = 200.
+    sep_dist_margin_noise = 50.
 
     UAVInfo = Any[]
 
     for i = 1:nUAV
         while true
-            uav_info = generateUAV(x = params.x, y = params.y, margin = 100., dist_mean = 1500., dist_noise = 0.3, angle_noise = 30., v_mean = 40., v_min = 20., v_max = 60.)
+            uav_info = generateUAV(x = params.x, y = params.y, margin = 100., dist_mean = 1500., dist_noise = 0.3, angle_noise = 45., v_mean = 40., v_min = 20., v_max = 60.)
 
             route = uav_info["route"]
 
-            rindex_noise = 1
-
-            rindex = 2 + int64(floor(abs(randn()) * rindex_noise / 2))
-            if rindex > length(route) - 1
-                rindex = length(route) - 1
+            if length(route) < min_route_points
+                continue
             end
 
-            if rindex == 2 || rindex == length(route) - 1
-                curr_loc = route[rindex]
-            else
-                curr_loc = route[rindex] + (route[rindex + 1] - route[rindex]) * rand()
-            end
+            curr_loc, heading = getInitLocation(params, route, rindex_noise)
 
             if i == 1
-                push!(UAVInfo, {"uav_info" => uav_info, "uav_state" => {"rindex" => rindex, "curr_loc" => curr_loc}})
+                push!(UAVInfo, {"uav_info" => uav_info, "uav_state" => {"heading" => heading, "curr_loc" => round(curr_loc)}})
                 break
 
             else
                 UAVInfo_ = copy(UAVInfo)
 
-                push!(UAVInfo_, {"uav_info" => uav_info, "uav_state" => {"rindex" => rindex, "curr_loc" => curr_loc}})
+                push!(UAVInfo_, {"uav_info" => uav_info, "uav_state" => {"heading" => heading, "curr_loc" => round(curr_loc)}})
 
                 sc, sc_state = generateScenarioWithParams(params, UAVInfo_; v_def = 40., v_min = 20., v_max = 60.)
 
-                if !check_sa_violation(sc, sc_state, draw = false)
-                    UAVInfo = UAVInfo_
-                    break
+                if i < 2 + nNearbyUAV
+                    loc, loc_, dist = getClosestPoint(sc, sc_state, i)
+
+                    if dist - sc.sa_dist > sep_dist_margin
+                        dist_error = abs(randn()) * sep_dist_margin_noise / 2
+                        if dist_error < -sep_dist_margin_noise
+                            dist_error = -sep_dist_margin_noise
+                        elseif dist_error > sep_dist_margin_noise
+                            dist_error = sep_dist_margin_noise
+                        end
+
+                        tran_vec = round((loc_ - loc) / norm(loc_ - loc) * (dist - sc.sa_dist - sep_dist_margin + dist_error))
+
+                        for j = 1:length(route)
+                            route[j] += tran_vec
+                        end
+                        UAVInfo_[i]["uav_state"]["curr_loc"] += tran_vec
+
+                        nInsideWaypoints = 0
+                        for j = 2:length(route)-1
+                            if checkLocationInside(params.x, params.y, route[j])
+                                nInsideWaypoints += 1
+                            end
+                        end
+
+                        if nInsideWaypoints < min_route_points - 2
+                            continue
+                        end
+                    end
+
+                    sc, sc_state = generateScenarioWithParams(params, UAVInfo_; v_def = 40., v_min = 20., v_max = 60.)
+
+                    if !check_sa_violation(sc, sc_state, draw = false, wait = false)
+                        UAVInfo = UAVInfo_
+                        break
+                    end
+
+                else
+                    if !check_sa_violation(sc, sc_state, draw = false, wait = false)
+                        UAVInfo = UAVInfo_
+                        break
+                    end
+
                 end
 
             end
@@ -389,7 +504,7 @@ function generateScenario_(seed::Int64)
 end
 
 
-function generateScenario(scenario_number::Union(Int64, Vector{Int64}, Nothing) = nothing; draw::Bool = false, wait::Bool = false, bSave::Bool = false, bAppend::Bool = true, Scenarios = nothing)
+function generateScenario(scenario_number::Union(Int64, Vector{Int64}, Nothing) = nothing; draw::Bool = false, wait::Bool = false, bSave::Bool = false, bAppend::Bool = true, navigation::Symbol = :GPS_INS, Scenarios = nothing)
 
     if Scenarios == nothing
         if isfile("Scenarios.jld")
@@ -469,7 +584,7 @@ function generateScenario(scenario_number::Union(Int64, Vector{Int64}, Nothing) 
                 save("Scenarios.jld", "Scenarios", Scenarios)
             end
 
-            sc, sc_state = generateScenarioWithParams(params, UAVInfo, navigation = :nav1; v_def = 40., v_min = 20., v_max = 60.)
+            sc, sc_state = generateScenarioWithParams(params, UAVInfo, navigation = navigation; v_def = 40., v_min = 20., v_max = 60.)
 
             return sc, sc_state, UAVStates, sn
         end
@@ -491,12 +606,16 @@ function loadScenarios()
 end
 
 
-function simulateScenario(scenario_number::Union(Int64, Vector{Int64}, Nothing) = nothing; draw::Bool = false, wait::Bool = false, bSim::Bool = false, Scenarios = nothing)
+function simulateScenario(scenario_number::Union(Int64, Vector{Int64}, Nothing) = nothing; draw::Bool = true, wait::Bool = false, bSim::Bool = false, navigation::Symbol = :GPS_INS, Scenarios = nothing)
+
+    if scenario_number == nothing
+        scenario_number = rand(1025:typemax(Int16))
+    end
 
     for sn in scenario_number
-        #println("scenario: ", sn)
+        println("scenario: ", sn)
 
-        sc, sc_state, UAVStates, _ = generateScenario(sn, Scenarios = Scenarios)
+        sc, sc_state, UAVStates, _ = generateScenario(sn, navigation = navigation, Scenarios = Scenarios)
 
         vis = UTMVisualizer(wait = wait)
 
@@ -504,6 +623,9 @@ function simulateScenario(scenario_number::Union(Int64, Vector{Int64}, Nothing) 
             visInit(vis, sc, sc_state)
             visUpdate(vis, sc, sc_state)
             updateAnimation(vis)
+            if bSim && !wait
+                readline()
+            end
         end
 
         if bSim
