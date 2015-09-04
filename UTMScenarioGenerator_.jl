@@ -9,6 +9,7 @@ export generateScenario, loadScenarios, simulateScenario
 using UAV_
 using Scenario_
 using UTMVisualizer_
+using Util
 
 using JLD
 
@@ -116,8 +117,11 @@ function scenario_1()
     params.sa_dist = 500.    # ft
 
     # nav1
-    params.loc_err_sigma = 200
-    params.loc_err_bound = params.loc_err_sigma
+    params.loc_err_sigma = 200.     # ft
+    params.loc_err_bound = params.loc_err_sigma     # ft
+
+    params.heading_err_sigma = 0.   # degree
+    params.velocity_err_sigma = 0.  # ft/s
 
     UAVInfo = Any[]
 
@@ -147,7 +151,7 @@ function checkLocationInside(x, y, loc)
 end
 
 
-function generateBases(;x::Float64 = 0., y::Float64 = 0., margin::Float64 = 0., nbase::Int64 = 0, min_dist::Float64 = 0.)
+function generateBases(rng::AbstractRNG; x::Float64 = 0., y::Float64 = 0., margin::Float64 = 0., nbase::Int64 = 0, min_dist::Float64 = 0.)
 
     bases = Vector{Float64}[]
 
@@ -158,8 +162,8 @@ function generateBases(;x::Float64 = 0., y::Float64 = 0., margin::Float64 = 0., 
         while true
             bOk = true
 
-            x_ = float64(int64(margin + rand() * (x - 2 * margin)))
-            y_ = float64(int64(margin + rand() * (y - 2 * margin)))
+            x_ = float64(int64(margin + rand(rng) * (x - 2 * margin)))
+            y_ = float64(int64(margin + rand(rng) * (y - 2 * margin)))
 
             for base_loc in bases
                 if norm([x_, y_] - base_loc) < min_dist
@@ -180,24 +184,24 @@ function generateBases(;x::Float64 = 0., y::Float64 = 0., margin::Float64 = 0., 
 end
 
 
-function generateUAV(; x::Float64 = 0., y::Float64 = 0., margin::Float64 = 0., dist_mean::Float64 = 0., dist_noise::Float64 = 0., angle_noise::Float64 = 0., v_mean::Float64 = 0., v_min::Float64 = 0., v_max::Float64 = 0.)
+function generateUAV(rng::AbstractRNG; x::Float64 = 0., y::Float64 = 0., margin::Float64 = 0., dist_mean::Float64 = 0., dist_noise::Float64 = 0., angle_noise::Float64 = 0., v_mean::Float64 = 0., v_min::Float64 = 0., v_max::Float64 = 0.)
 
-    start_side = rand(1:4)
+    start_side = randi(rng, 1:4)
 
     if start_side == 1
         x_ = -dist_mean / 2
-        y_ = float64(int64(margin + rand() * (y - 2 * margin)))
+        y_ = float64(int64(margin + rand(rng) * (y - 2 * margin)))
         u = [1., 0.]
     elseif start_side == 2
-        x_ = float64(int64(margin + rand() * (x - 2 * margin)))
+        x_ = float64(int64(margin + rand(rng) * (x - 2 * margin)))
         y_ = -dist_mean / 2
         u = [0., 1.]
     elseif start_side == 3
         x_ = x + dist_mean / 2
-        y_ = float64(int64(margin + rand() * (y - 2 * margin)))
+        y_ = float64(int64(margin + rand(rng) * (y - 2 * margin)))
         u = [-1., 0.]
     elseif start_side == 4
-        x_ = float64(int64(margin + rand() * (x - 2 * margin)))
+        x_ = float64(int64(margin + rand(rng) * (x - 2 * margin)))
         y_ = y + dist_mean / 2
         u = [0., -1.]
     end
@@ -217,7 +221,7 @@ function generateUAV(; x::Float64 = 0., y::Float64 = 0., margin::Float64 = 0., d
         bInside = false
 
         while true
-            angle = randn() * angle_noise / 2
+            angle = randn(rng) * angle_noise / 2
 
             if angle < -angle_noise
                 angle = -angle_noise
@@ -225,7 +229,7 @@ function generateUAV(; x::Float64 = 0., y::Float64 = 0., margin::Float64 = 0., d
                 angle = angle_noise
             end
 
-            d = dist_mean + randn() * dist_mean * dist_noise / 2
+            d = dist_mean + randn(rng) * dist_mean * dist_noise / 2
 
             if d < dist_mean * (1 - dist_noise)
                 d = dist_mean * (1- dist_noise)
@@ -259,7 +263,7 @@ function generateUAV(; x::Float64 = 0., y::Float64 = 0., margin::Float64 = 0., d
     end
 
     v_noise = max(v_mean - v_min, v_max - v_mean)
-    v = round(v_mean + randn() * v_noise / 2)
+    v = round(v_mean + randn(rng) * v_noise / 2)
     if v < v_min
         v = v_min
     elseif v > v_max
@@ -272,11 +276,11 @@ function generateUAV(; x::Float64 = 0., y::Float64 = 0., margin::Float64 = 0., d
 end
 
 
-function getInitLocation(params::ScenarioParams, route::Vector{Vector{Float64}}, rindex_noise::Int64)
+function getInitLocation(rng::AbstractRNG, params::ScenarioParams, route::Vector{Vector{Float64}}, rindex_noise::Int64)
 
     # assume that whole planned path is within the area except start and end points
 
-    rindex = 1 + int64(floor(abs(randn()) * rindex_noise / 2))
+    rindex = 1 + int64(floor(abs(randn(rng)) * rindex_noise / 2))
 
     if rindex == 1
         rn = 0.
@@ -285,7 +289,7 @@ function getInitLocation(params::ScenarioParams, route::Vector{Vector{Float64}},
             curr_loc = route[rindex] + (route[rindex + 1] - route[rindex]) * rn
 
             if checkLocationInside(params.x, params.y, curr_loc)
-                curr_loc += (route[rindex + 1] - route[rindex]) * (1 - rn) * rand()
+                curr_loc += (route[rindex + 1] - route[rindex]) * (1 - rn) * rand(rng)
                 break
             end
 
@@ -299,11 +303,11 @@ function getInitLocation(params::ScenarioParams, route::Vector{Vector{Float64}},
         curr_loc = route[rindex]
 
     else
-        curr_loc = route[rindex] + (route[rindex + 1] - route[rindex]) * rand()
+        curr_loc = route[rindex] + (route[rindex + 1] - route[rindex]) * rand(rng)
 
     end
 
-    return curr_loc, rindex + 1
+    return round(curr_loc), rindex + 1
 end
 
 
@@ -394,7 +398,8 @@ end
 
 function generateScenario_(seed::Int64)
 
-    srand(seed)
+    # should be cautious about other rand()s in Scenario_.updateState
+    rng = MersenneTwister(seed)
 
     # parameters
     params = ScenarioParams()
@@ -406,27 +411,30 @@ function generateScenario_(seed::Int64)
 
     params.cell_towers = nothing
 
-    params.landing_bases = generateBases(x = params.x, y = params.y, margin = 100., nbase = 3, min_dist = 2500.)
+    params.landing_bases = generateBases(rng, x = params.x, y = params.y, margin = 100., nbase = 3, min_dist = 2500.)
 
     params.sa_dist = 500.    # ft
 
     # nav1
-    params.loc_err_sigma = 200
-    params.loc_err_bound = params.loc_err_sigma
+    params.loc_err_sigma = 200.     # ft
+    params.loc_err_bound = params.loc_err_sigma     # ft
+
+    params.heading_err_sigma = 0.   # degree
+    params.velocity_err_sigma = 0.  # ft/s
 
     # parameters for generating scenario
     nUAV = 5
     min_route_points = 4
     rindex_noise = 2
     nNearbyUAV = 2
-    sep_dist_margin = 200.
-    sep_dist_margin_noise = 50.
+    sep_dist_margin = 20.
+    sep_dist_margin_noise = 5.
 
     UAVInfo = Any[]
 
     for i = 1:nUAV
         while true
-            uav_info = generateUAV(x = params.x, y = params.y, margin = 100., dist_mean = 1500., dist_noise = 0.3, angle_noise = 45., v_mean = 40., v_min = 20., v_max = 60.)
+            uav_info = generateUAV(rng, x = params.x, y = params.y, margin = 100., dist_mean = 1500., dist_noise = 0.3, angle_noise = 45., v_mean = 40., v_min = 20., v_max = 60.)
 
             route = uav_info["route"]
 
@@ -434,16 +442,16 @@ function generateScenario_(seed::Int64)
                 continue
             end
 
-            curr_loc, heading = getInitLocation(params, route, rindex_noise)
+            curr_loc, heading = getInitLocation(rng, params, route, rindex_noise)
 
             if i == 1
-                push!(UAVInfo, {"uav_info" => uav_info, "uav_state" => {"heading" => heading, "curr_loc" => round(curr_loc)}})
+                push!(UAVInfo, {"uav_info" => uav_info, "uav_state" => {"heading" => heading, "curr_loc" => curr_loc}})
                 break
 
             else
                 UAVInfo_ = copy(UAVInfo)
 
-                push!(UAVInfo_, {"uav_info" => uav_info, "uav_state" => {"heading" => heading, "curr_loc" => round(curr_loc)}})
+                push!(UAVInfo_, {"uav_info" => uav_info, "uav_state" => {"heading" => heading, "curr_loc" => curr_loc}})
 
                 sc, sc_state = generateScenarioWithParams(params, UAVInfo_; v_def = 40., v_min = 20., v_max = 60.)
 
@@ -451,7 +459,7 @@ function generateScenario_(seed::Int64)
                     loc, loc_, dist = getClosestPoint(sc, sc_state, i)
 
                     if dist - sc.sa_dist > sep_dist_margin
-                        dist_error = abs(randn()) * sep_dist_margin_noise / 2
+                        dist_error = abs(randn(rng)) * sep_dist_margin_noise / 2
                         if dist_error < -sep_dist_margin_noise
                             dist_error = -sep_dist_margin_noise
                         elseif dist_error > sep_dist_margin_noise

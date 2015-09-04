@@ -36,6 +36,9 @@ type ScenarioParams
     loc_err_sigma::Float64
     loc_err_bound::Float64
 
+    heading_err_sigma::Float64
+    velocity_err_sigma::Float64
+
     bMCTS::Bool
 
 
@@ -65,6 +68,9 @@ type ScenarioParams
 
         self.loc_err_sigma = 0.     # ft
         self.loc_err_bound = 0.     # ft
+
+        self.heading_err_sigma = 0.     # degree
+        self.velocity_err_sigma = 0.    # ft/s
 
         self.bMCTS = false
 
@@ -98,6 +104,9 @@ type Scenario
     # for nav1
     loc_err_sigma::Float64
     loc_err_bound::Float64
+
+    heading_err_sigma::Float64
+    velocity_err_sigma::Float64
 
     bMCTS::Bool
 
@@ -145,6 +154,9 @@ type Scenario
 
         self.loc_err_sigma = params.loc_err_sigma
         self.loc_err_bound = params.loc_err_bound
+
+        self.heading_err_sigma = params.heading_err_sigma
+        self.velocity_err_sigma = params.velocity_err_sigma
 
         self.bMCTS = params.bMCTS
 

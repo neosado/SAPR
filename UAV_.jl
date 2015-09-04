@@ -136,7 +136,7 @@ function updateStateGPSINS(uav::UAV, state::UAVState)
 
     delta = (hloc - curr_loc) / norm(hloc - curr_loc) * uav.velocity * uav.sc.dt
 
-    if norm(delta) > norm(hloc - curr_loc)
+    if norm(delta) > norm(hloc - curr_loc) || curr_loc == hloc
         dt = norm(hloc - curr_loc) / uav.velocity
 
         curr_loc = hloc
@@ -179,7 +179,13 @@ function updateStateNav1(uav::UAV, state::UAVState)
         loc_estimate = rand(MvNormal(curr_loc, uav.sc.loc_err_sigma))
     end
 
-    delta = (hloc - loc_estimate) / norm(hloc - loc_estimate) * uav.velocity * uav.sc.dt
+    u = (hloc - loc_estimate) / norm(hloc - loc_estimate)
+    angle_noise = randn() * uav.sc.heading_err_sigma
+    u = [cosd(angle_noise) -sind(angle_noise); sind(angle_noise) cosd(angle_noise)] * u
+
+    v = uav.velocity + randn() * uav.sc.velocity_err_sigma
+
+    delta = u * v * uav.sc.dt
 
     if htype == :waypoint
         if hindex == uav.nwaypoint

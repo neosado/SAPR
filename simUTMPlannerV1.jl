@@ -593,7 +593,7 @@ function evalScenario(scenario_number::Union(Int64, Nothing) = nothing; N::Int64
             RE = sqrt(varX) / abs(meanX)
         end
 
-        if n % 100 == 0
+        if n % 10 == 0
             if RE < RE_threshold
                 break
             end
@@ -642,6 +642,7 @@ end
 if false
     #simulateScenario()
     simulateScenario(nothing, draw = true, wait = false, bSim = true)
+    #simulateScenario(1, draw = true, wait = false, bSim = true, navigation = :nav1)
     #for i = 1:10
     #    simulateScenario(nothing, draw = true, wait = false, bSim = true)
     #end
@@ -649,12 +650,10 @@ end
 
 
 if false
-    #seed = int64(time())
-    seed = 12
+    seed = int64(time())
 
     #scenario_number = nothing
     scenario_number = 1
-    #scenario_number = 28440
 
     nloop = 100
     #nloop = 1000
@@ -672,7 +671,7 @@ if false
 
     #test(pm, alg)
     #simulate(pm, nothing, draw = true, wait = false, ts = 0, action = :None_)
-    simulate(pm, alg, draw = true, wait = true, bSeq = true, variant = variant, bStat = false, debug = 3)
+    simulate(pm, alg, draw = true, wait = true, bSeq = true, variant = variant, bStat = false, debug = 1)
 end
 
 
@@ -717,9 +716,13 @@ end
 
 function Experiment02()
 
-    srand(int64(time()))
-    #sn_list = unique(rand(1024:typemax(Int16), 1100))[1:10]
-    sn_list = [28440, 19665, 4188, 7798, 6623, 24211, 20763, 1365, 24156, 30545]
+    seed = int64(time())
+
+    println("seed: ", seed)
+
+    srand(seed)
+
+    sn_list = unique(rand(1024:typemax(Int16), 1100))[1:10]
     #sn_list = 1
 
     N = 100
@@ -736,26 +739,32 @@ function Experiment02()
 
     for sn in sn_list
         println("scenario: ", sn)
-        print("N: ", N, ", nloop: ", nloop)
 
         iseed = sn
 
         #for variant in [nothing, sparse, pw]
-        #for variant in [pw]
-        for nObsMax in [1, 2, 4, 6, 8, 10, 12]
-            variant = sparse
-            variant["nObsMax"] = nObsMax
-        #for param in [(1, 0.4), (2, 0.4), (4, 0.4), (6, 0.4)]
-        #for param in [(2, 0.1), (2, 0.2), (2, 0.4), (2, 0.6)]
-            #variant = pw
-            #variant["c"] = param[1]
-            #variant["alpha"] = param[2]
+        for variant in {nothing,
+            ["type" => :SparseUCT, "nObsMax" => 1],
+            ["type" => :SparseUCT, "nObsMax" => 2],
+            ["type" => :SparseUCT, "nObsMax" => 4],
+            ["type" => :SparseUCT, "nObsMax" => 6],
+            ["type" => :SparseUCT, "nObsMax" => 8],
+            ["type" => :SparseUCT, "nObsMax" => 10],
+            ["type" => :SparseUCT, "nObsMax" => 12],
+            ["type" => :ProgressiveWidening, "c" => 1, "alpha" => 0.4],
+            ["type" => :ProgressiveWidening, "c" => 2, "alpha" => 0.4],
+            ["type" => :ProgressiveWidening, "c" => 4, "alpha" => 0.4],
+            ["type" => :ProgressiveWidening, "c" => 6, "alpha" => 0.4],
+            ["type" => :ProgressiveWidening, "c" => 2, "alpha" => 0.1],
+            ["type" => :ProgressiveWidening, "c" => 2, "alpha" => 0.2],
+            ["type" => :ProgressiveWidening, "c" => 2, "alpha" => 0.4],
+            ["type" => :ProgressiveWidening, "c" => 2, "alpha" => 0.6]}
 
-            println(", variant: ", variant)
+            println("N: ", N, ", nloop: ", nloop, ", variant: ", variant)
 
             X = evalScenario(sn, N = N, nloop = nloop, rollout_type = rollout_type, variant = variant, Scenarios = Scenarios, iseed = iseed, debug = debug)
 
-            println("mean: ", neat(mean(X)), ", std: ", neat(std(X) / sqrt(length(X))), ", RE: ", neat((std(X ) / length(X)) / abs(mean(X))))
+            println("n: ", length(X), ", mean: ", neat(mean(X)), ", std: ", neat(std(X) / sqrt(length(X))), ", RE: ", neat((std(X ) / sqrt(length(X))) / abs(mean(X))))
         end
 
         println()

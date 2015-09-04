@@ -1,6 +1,6 @@
 module Util
 
-export argmax, sampleFromProb, neat
+export argmax, sampleFromProb, neat, randi
 
 
 using Base.Test
@@ -45,6 +45,27 @@ function neat(v)
     else
         return neat_(v)
     end
+end
+
+
+function randi(rng::AbstractRNG, range::UnitRange{Int64})
+
+    rn = rand(rng)
+
+    range_ = [range]
+
+    boundary = [0:1/length(range_):1][2:end]
+
+    v = nothing
+
+    for i = 1:length(boundary)
+        if rn <= boundary[i]
+            v = range_[i]
+            break
+        end
+    end
+
+    return v
 end
 
 
