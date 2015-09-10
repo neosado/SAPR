@@ -152,6 +152,94 @@ function simulate(sc::Scenario, sc_state::ScenarioState; draw::Bool = false, wai
 end
 
 
+function rollout_default(alg::POMCP, pm::UTMPlannerV1, s::UPState, h::History, d::Int64; debug::Int64 = 0)
+
+    if d == 0
+        return 0
+    end
+
+    a = alg.default_policy(pm, s)
+    @assert isFeasible(pm, s, a)
+
+    if debug > 2
+        print(a, ", ")
+    end
+
+    s_, o, r = alg.Generative(pm, s, a)
+
+    if isEnd(pm, s_)
+        return r
+    end
+
+    return r + alg.rgamma_ * rollout_default(alg, pm, s_, h, d - 1, debug = debug)
+end
+
+
+function rollout_MC(alg::POMCP, pm::UTMPlannerV1, s::UPState, h::History, d::Int64; debug::Int64 = 0)
+
+    r = 0.
+
+    for i = 1:10
+        r += (rollout_default(alg, pm, s, h, d + 3) - r) / i
+    end
+
+    return r
+end
+
+
+function rollout_none(alg::POMCP, pm::UTMPlannerV1, s::UPState, h::History, d::Int64; debug::Int64 = 0)
+
+    if d == 0
+        return 0
+    end
+
+    s_, o, r = alg.Generative(pm, s, pm.actions[1])
+
+    if isEnd(pm, s_)
+        return r
+    end
+
+    return r + alg.rgamma_ * rollout_none(alg, pm, s_, h, d - 1)
+end
+
+
+function rollout_inf(alg::POMCP, pm::UTMPlannerV1, s::UPState, h::History, d::Int64; debug::Int64 = 0)
+
+    R = 0.
+
+    while true
+        s_, o, r = alg.Generative(pm, s, pm.actions[1])
+        R += r
+        s = s_
+
+        if isEnd(pm, s)
+            break
+        end
+    end
+
+    return R
+end
+
+
+function rollout_once(alg::POMCP, pm::UTMPlannerV1, s::UPState, h::History, d::Int64; debug::Int64 = 0)
+
+    if d == 0
+        return 0
+    end
+
+    a = alg.default_policy(pm, s)
+    @assert isFeasible(pm, s, a)
+
+    s_, o, r = alg.Generative(pm, s, a)
+
+    if isEnd(pm, s_)
+        return r
+    end
+
+    return r + alg.rgamma_ * rollout_none(alg, pm, s_, h, d - 1)
+end
+
+
 function rand_action(pm::UTMPlannerV1, param::Vector{Float64})
 
     a = nothing
@@ -172,7 +260,7 @@ function rand_action(pm::UTMPlannerV1, param::Vector{Float64})
     return a, prob
 end
 
-function rollout_policy_(pm::UTMPlannerV1, s::UPState, param::Vector{Float64})
+function CE_rollout_policy_(pm::UTMPlannerV1, s::UPState, param::Vector{Float64})
 
     while true
         a, prob = rand_action(pm, param)
@@ -183,20 +271,20 @@ function rollout_policy_(pm::UTMPlannerV1, s::UPState, param::Vector{Float64})
     end
 end
 
-rollout_policy(param::Vector{Float64}) = (pm::UTMPlannerV1, s::UPState) -> rollout_policy_(pm, s, param)
+CE_rollout_policy(param::Vector{Float64}) = (pm::UTMPlannerV1, s::UPState) -> CE_rollout_policy_(pm, s, param)
 
 
-function initRolloutPolicy(pm::UTMPlannerV1, alg::POMCP)
+function initRolloutPolicyForCE(pm::UTMPlannerV1, alg::POMCP)
 
     dist_param = [0, ones(pm.nAction-1) / (pm.nAction-1)]
 
-    alg.default_policy = rollout_policy(dist_param)
+    alg.default_policy = CE_rollout_policy(dist_param)
 
     return dist_param
 end
 
 
-function updateRolloutPolicy(pm::UTMPlannerV1, alg::POMCP, prev_dist_param::Vector{Float64}; gamma::Float64 = 1., rho::Float64 = 0.1)
+function updateRolloutPolicyForCE(pm::UTMPlannerV1, alg::POMCP, prev_dist_param::Vector{Float64}; gamma::Float64 = 1., rho::Float64 = 0.1)
 
     if alg.rollout_type == :CE_worst
         alpha = [0, ones(pm.nAction-1) * 0.05]
@@ -322,7 +410,103 @@ function updateRolloutPolicy(pm::UTMPlannerV1, alg::POMCP, prev_dist_param::Vect
 end
 
 
-function simulate(pm, alg; draw::Bool = false, wait::Bool = false, bSeq::Bool = false, ts::Int64 = 0, action::Symbol = :None_, variant::Union(Dict{ASCIIString, Any}, Nothing) = nothing, bStat::Bool = false, debug::Int64 = 0)
+function rollout_CE(alg::POMCP, pm::UTMPlannerV1, s::UPState, h::History, d::Int64; debug::Int64 = 0)
+
+    if d == 0
+        return 0
+    end
+
+    a = alg.default_policy(pm, s)
+    @assert a.action != :None_
+
+    if debug > 2
+        print(a, ", ")
+    end
+
+    if a.action == s.heading
+        a_ = pm.actions[1]
+    else
+        a_ = a
+    end
+
+    @assert isFeasible(pm, s, a_)
+
+    s_, o, r = alg.Generative(pm, s, a_)
+
+    if isEnd(pm, s_)
+        push!(alg.CE_samples, (a, r))
+        return r
+    end
+
+    r += alg.rgamma_ * rollout_none(alg, pm, s_, h, d - 1)
+    push!(alg.CE_samples, (a, r))
+
+    return r
+end
+
+
+function rollout_MS(alg::POMCP, pm::UTMPlannerV1, s::UPState, h::History, d::Int64; MSState::Union(Vector{Int64}, Nothing) = nothing, debug::Int64 = 0)
+
+    # XXX hardcoded
+    ms_L = [1000]
+    ms_N = [4]
+
+    if d == 0
+        return 0
+    end
+
+    if MSState == nothing
+        a = alg.default_policy(pm, s)
+        @assert isFeasible(pm, s, a)
+
+        if debug > 2
+            println("    rollout action: $a at level $d")
+        end
+
+        MSState = ones(Int64, pm.sc.nUAV)
+    else
+        a = pm.actions[1]
+    end
+
+    s_, o, r = alg.Generative(pm, s, a)
+
+    if isEnd(pm, s_)
+        return r
+    end
+
+    n = 1
+    MSState_ = copy(MSState)
+
+    loc = grid2coord(pm, s_.location)
+
+    for i = 2:pm.sc.nUAV
+        if MSState[i] < length(ms_L) + 1
+            loc_ = pm.sc_state.UAVStates[i].curr_loc
+
+            if norm(loc - loc_) < ms_L[MSState[i]]
+                if debug > 2
+                    println("    UAV 1 ", loc, " and UAV ", i, " ", neat(loc_), " hit the level ", MSState[i], " at level ", d)
+                end
+
+                if ms_N[MSState[i]] > n
+                    n = ms_N[MSState[i]]
+                end
+
+                MSState_[i] += 1
+            end
+        end
+    end
+
+    r_ = 0.
+    for i = 1:n
+        r_ += (rollout_MS(alg, pm, s_, h, d - 1, MSState = MSState_, debug = debug) - r_) / i
+    end
+
+    return r + alg.rgamma_ * r_
+end
+
+
+function simulate(pm, alg; draw::Bool = false, wait::Bool = false, bSeq::Bool = false, ts::Int64 = 0, action::Symbol = :None_, variant = nothing, bStat::Bool = false, debug::Int64 = 0)
 
     sc = pm.sc
     sc_state = pm.sc_state
@@ -338,7 +522,7 @@ function simulate(pm, alg; draw::Bool = false, wait::Bool = false, bSeq::Bool = 
     R = 0
 
     if alg != nothing && (alg.rollout_type == :CE_worst || alg.rollout_type == :CE_best)
-        rollout_policy_param = initRolloutPolicy(pm, alg)
+        CE_rollout_policy_param = initRolloutPolicyForCE(pm, alg)
     end
 
     if draw
@@ -386,7 +570,7 @@ function simulate(pm, alg; draw::Bool = false, wait::Bool = false, bSeq::Bool = 
 
             if alg.rollout_type == :CE_worst || alg.rollout_type == :CE_best
                 if length(alg.CE_samples) != 0
-                    rollout_policy_param = updateRolloutPolicy(pm, alg, rollout_policy_param)
+                    CE_rollout_policy_param = updateRolloutPolicyForCE(pm, alg, CE_rollout_policy_param)
                 end
 
                 if debug > 1
@@ -403,7 +587,7 @@ function simulate(pm, alg; draw::Bool = false, wait::Bool = false, bSeq::Bool = 
                         end
                     end
 
-                    println("ro_param: ", neat(rollout_policy_param))
+                    println("CE_ro_param: ", neat(CE_rollout_policy_param))
                 end
             end
 
@@ -544,7 +728,7 @@ function default_policy(pm::UTMPlannerV1, s::UPState)
 end
 
 
-function evalScenario(scenario_number::Union(Int64, Nothing) = nothing; N::Int64 = 100, RE_threshold::Float64 = 0.1, bSeq::Bool = true, nloop::Int64 = 100, ts::Int64 = 0, action::Symbol = :None_, rollout_type::Symbol = :default, variant::Union(Dict{ASCIIString, Any}, Nothing) = nothing, Scenarios = nothing, iseed::Union(Int64, Nothing) = nothing, debug::Int64 = 0)
+function evalScenario(scenario_number::Union(Int64, Nothing) = nothing; N::Int64 = 100, RE_threshold::Float64 = 0.1, bSeq::Bool = true, nloop::Int64 = 100, ts::Int64 = 0, action::Symbol = :None_, rollout::Union((Symbol, Function), Nothing) = :default, variant = nothing, Scenarios = nothing, iseed::Union(Int64, Nothing) = nothing, debug::Int64 = 0)
 
     if iseed != nothing
         srand(iseed)
@@ -575,7 +759,7 @@ function evalScenario(scenario_number::Union(Int64, Nothing) = nothing; N::Int64
         if !bSeq
             x = simulate(pm, nothing, ts = ts, action = action, variant = variant)
         else
-            alg = POMCP(depth = 5, default_policy = default_policy, nloop_max = nloop, nloop_min = nloop, c = sqrt(2), gamma_ = 0.95, rollout_type = rollout_type, rgamma_ = 0.95)
+            alg = POMCP(depth = 5, default_policy = default_policy, nloop_max = nloop, nloop_min = nloop, c = sqrt(2), gamma_ = 0.95, rollout = rollout, rgamma_ = 0.95)
             x = simulate(pm, alg, bSeq = bSeq, variant = variant)
         end
 
@@ -593,7 +777,7 @@ function evalScenario(scenario_number::Union(Int64, Nothing) = nothing; N::Int64
             RE = sqrt(varX) / abs(meanX)
         end
 
-        if n % 10 == 0
+        if n % int64(N / 10) == 0
             if RE < RE_threshold
                 break
             end
@@ -651,6 +835,7 @@ end
 
 if false
     seed = int64(time())
+    println("seed: ", seed)
 
     #scenario_number = nothing
     scenario_number = 1
@@ -658,20 +843,26 @@ if false
     nloop = 100
     #nloop = 1000
 
-    # :default, :default_once, :MC, :inf, :CE_worst, :CE_best
-    rollout_type = :default_once
+    # :default, :MC, :inf, :once, :CE_worst, :CE_best, :MS
+    #rollout = nothing
+    rollout = (:once, rollout_once)
+    #rollout = (:MS, rollout_MS)
 
-    variant = nothing
-    #variant = ["type" => :SparseUCT, "nObsMax" => 4]
+    #variant = nothing
+    #variant = ["type" => :SparseUCT, "nObsMax" => 8]
     #variant = ["type" => :ProgressiveWidening, "c" => 2, "alpha" => 0.4]
+    #variant = ["type" => :UCB1_tuned]
+    #variant = ["type" => :UCB_V, "c" => 1.]
+    #variant = {["type" => :SparseUCT, "nObsMax" => 8], ["type" => :UCB1_tuned]}
+    variant = {["type" => :SparseUCT, "nObsMax" => 8], ["type" => :MSUCT, "L" => [1000.], "N" => [4]]}
 
     pm = UTMPlannerV1(seed = seed, scenario_number = scenario_number)
 
-    alg = POMCP(depth = 5, default_policy = default_policy, nloop_max = nloop, nloop_min = nloop, c = sqrt(2), gamma_ = 0.95, rollout_type = rollout_type, rgamma_ = 0.95, visualizer = MCTSVisualizer())
+    alg = POMCP(depth = 5, default_policy = default_policy, nloop_max = nloop, nloop_min = nloop, c = sqrt(2), gamma_ = 0.95, rollout = rollout, rgamma_ = 0.95, visualizer = MCTSVisualizer())
 
     #test(pm, alg)
     #simulate(pm, nothing, draw = true, wait = false, ts = 0, action = :None_)
-    simulate(pm, alg, draw = true, wait = true, bSeq = true, variant = variant, bStat = false, debug = 1)
+    simulate(pm, alg, draw = true, wait = false, bSeq = true, variant = variant, bStat = false, debug = 3)
 end
 
 
@@ -693,14 +884,13 @@ function Experiment01()
 
         iseed = sn
 
-        # :default, :default_once, :MC, :inf, :CE_worst, :CE_best
-        for rollout_type in [:default, :CE_best, :CE_worst]
-            print("rollout_type: ", rollout_type)
+        for rollout in [nothing, (:CE_best, rollout_CE), (:CE_worst, rollout_CE)]
+            print("rollout: ", rollout)
             if debug > 0
                 println()
             end
 
-            X = evalScenario(sn, N = N, nloop = nloop, iseed = iseed, rollout_type = rollout_type, Scenarios = Scenarios, debug = debug)
+            X = evalScenario(sn, N = N, nloop = nloop, iseed = iseed, rollout = rollout, Scenarios = Scenarios, debug = debug)
 
             if debug == 0
                 print(", ")
@@ -722,15 +912,19 @@ function Experiment02()
 
     srand(seed)
 
-    sn_list = unique(rand(1024:typemax(Int16), 1100))[1:10]
+    #sn_list = unique(rand(1024:typemax(Int16), 1100))[1:10]
     #sn_list = 1
+    #sn_list = [1, 1161, 1250, 1785, 2142, 2620, 8440, 9525, 12506, 15084, 31656]
+    sn_list =  [1, 2142, 8440, 15084, 31656]
 
-    N = 100
+    N = 1000
     nloop = 100
 
-    rollout_type = :default_once
+    #rollout = nothing
+    rollout = (:once, rollout_once)
+    #rollout = (:MS, rollout_MS)
 
-    sparse = ["type" => :SparseUCT, "nObsMax" => 4]
+    sparse = ["type" => :SparseUCT, "nObsMax" => 8]
     pw = ["type" => :ProgressiveWidening, "c" => 2, "alpha" => 0.4]
 
     debug = 0
@@ -742,27 +936,30 @@ function Experiment02()
 
         iseed = sn
 
-        #for variant in [nothing, sparse, pw]
-        for variant in {nothing,
-            ["type" => :SparseUCT, "nObsMax" => 1],
-            ["type" => :SparseUCT, "nObsMax" => 2],
-            ["type" => :SparseUCT, "nObsMax" => 4],
-            ["type" => :SparseUCT, "nObsMax" => 6],
-            ["type" => :SparseUCT, "nObsMax" => 8],
-            ["type" => :SparseUCT, "nObsMax" => 10],
-            ["type" => :SparseUCT, "nObsMax" => 12],
-            ["type" => :ProgressiveWidening, "c" => 1, "alpha" => 0.4],
-            ["type" => :ProgressiveWidening, "c" => 2, "alpha" => 0.4],
-            ["type" => :ProgressiveWidening, "c" => 4, "alpha" => 0.4],
-            ["type" => :ProgressiveWidening, "c" => 6, "alpha" => 0.4],
-            ["type" => :ProgressiveWidening, "c" => 2, "alpha" => 0.1],
-            ["type" => :ProgressiveWidening, "c" => 2, "alpha" => 0.2],
-            ["type" => :ProgressiveWidening, "c" => 2, "alpha" => 0.4],
-            ["type" => :ProgressiveWidening, "c" => 2, "alpha" => 0.6]}
+        #for variant in {nothing, sparse, pw}
+        #for variant in {nothing,
+        #    ["type" => :SparseUCT, "nObsMax" => 1],
+        #    ["type" => :SparseUCT, "nObsMax" => 2],
+        #    ["type" => :SparseUCT, "nObsMax" => 4],
+        #    ["type" => :SparseUCT, "nObsMax" => 6],
+        #    ["type" => :SparseUCT, "nObsMax" => 8],
+        #    ["type" => :SparseUCT, "nObsMax" => 10],
+        #    ["type" => :SparseUCT, "nObsMax" => 12],
+        #    ["type" => :ProgressiveWidening, "c" => 1, "alpha" => 0.4],
+        #    ["type" => :ProgressiveWidening, "c" => 2, "alpha" => 0.4],
+        #    ["type" => :ProgressiveWidening, "c" => 4, "alpha" => 0.4],
+        #    ["type" => :ProgressiveWidening, "c" => 6, "alpha" => 0.4],
+        #    ["type" => :ProgressiveWidening, "c" => 2, "alpha" => 0.1],
+        #    ["type" => :ProgressiveWidening, "c" => 2, "alpha" => 0.2],
+        #    ["type" => :ProgressiveWidening, "c" => 2, "alpha" => 0.4],
+        #    ["type" => :ProgressiveWidening, "c" => 2, "alpha" => 0.6]}
+        #for variant in {nothing, ["type" => :UCB1_tuned], ["type" => :UCB_V, "c" => 1.]}
+        #for variant in {nothing, sparse, {sparse, ["type" => :UCB1_tuned]}, {sparse, ["type" => :UCB_V, "c" => 1.]}}
+        #for variant in {sparse}
+        for variant in {{sparse, ["type" => :MSUCT, "L" => [1000.], "N" => [4]]}}
+            println("N: ", N, ", nloop: ", nloop, ", rollout: ", rollout[1], ", variant: ", variant)
 
-            println("N: ", N, ", nloop: ", nloop, ", variant: ", variant)
-
-            X = evalScenario(sn, N = N, nloop = nloop, rollout_type = rollout_type, variant = variant, Scenarios = Scenarios, iseed = iseed, debug = debug)
+            X = evalScenario(sn, N = N, nloop = nloop, rollout = rollout, variant = variant, Scenarios = Scenarios, iseed = iseed, debug = debug)
 
             println("n: ", length(X), ", mean: ", neat(mean(X)), ", std: ", neat(std(X) / sqrt(length(X))), ", RE: ", neat((std(X ) / sqrt(length(X))) / abs(mean(X))))
         end

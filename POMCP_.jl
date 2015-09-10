@@ -28,12 +28,16 @@ type POMCP <: MCTS
 
     depth::Int64
 
+    Generative::Function
+
     default_policy::Function
 
     T::Dict{History, Bool}
     N::Dict{(History, Action), Int64}
     Ns::Dict{History, Int64}
     Q::Dict{(History, Action), Float64}
+
+    X2::Dict{(History, Action), Float64}
 
     B::Dict{History, Vector{State}}
     Os::Dict{(History, Action), Vector{Observation}}
@@ -46,6 +50,7 @@ type POMCP <: MCTS
     gamma_::Float64
 
     rollout_type::Symbol
+    rollout_func::Function
     rgamma_::Float64
     CE_samples::Vector{(Action, Float64)}
 
@@ -54,7 +59,7 @@ type POMCP <: MCTS
     visualizer::Union(MCTSVisualizer, Nothing)
 
 
-    function POMCP(;seed::Union(Int64, Nothing) = nothing, depth::Int64 = 3, default_policy::Function = pi_0, nloop_max::Int64 = 10000, nloop_min::Int64 = 10000, eps::Float64 = 1.e-3, c::Float64 = 1., gamma_::Float64 = 0.9, rollout_type::Symbol = :default, rgamma_::Float64 = 0.9, visualizer::Union(MCTSVisualizer, Nothing) = nothing)
+    function POMCP(;seed::Union(Int64, Nothing) = nothing, depth::Int64 = 3, default_policy::Function = pi_0, nloop_max::Int64 = 10000, nloop_min::Int64 = 10000, eps::Float64 = 1.e-3, c::Float64 = 1., gamma_::Float64 = 0.9, rollout::Union((Symbol, Function), Nothing) = nothing, rgamma_::Float64 = 0.9, visualizer::Union(MCTSVisualizer, Nothing) = nothing)
 
         self = new()
 
@@ -74,12 +79,16 @@ type POMCP <: MCTS
 
         self.depth = depth
 
+        self.Generative = Generative
+
         self.default_policy = default_policy
 
         self.T = Dict{History, Bool}()
         self.N = Dict{(History, Action), Int64}()
         self.Ns = Dict{History, Int64}()
         self.Q = Dict{(History, Action), Float64}()
+
+        self.X2 = Dict{(History, Action), Float64}()
 
         self.B = Dict{History, Vector{State}}()
         self.Os = Dict{(History, Action), Vector{Observation}}()
@@ -91,7 +100,14 @@ type POMCP <: MCTS
         self.c = c
         self.gamma_ = gamma_
 
-        self.rollout_type = rollout_type
+        if rollout == nothing
+            self.rollout_type = :default
+            self.rollout_func = rollout_default
+        else
+            self.rollout_type = rollout[1]
+            self.rollout_func = rollout[2]
+        end
+
         self.rgamma_ = rgamma_  # rollout gamma
         self.CE_samples = (Action, Int64)[]
 
@@ -101,6 +117,14 @@ type POMCP <: MCTS
 
         return self
     end
+end
+
+
+function Generative(pm::POMDP, s::State, a::Action)
+
+    s_, o, r = POMDP_.Generative(pm, s, a)
+
+    return s_, o, r / pm.reward_norm_const
 end
 
 
@@ -117,14 +141,6 @@ function pi_0(pm::POMDP, s::State)
 end
 
 
-function Generative(pm::POMDP, s::State, a::Action)
-
-    s_, o, r = POMDP_.Generative(pm, s, a)
-
-    return s_, o, r / pm.reward_norm_const
-end
-
-
 function rollout_default(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64; debug::Int64 = 0)
 
     if d == 0
@@ -138,7 +154,7 @@ function rollout_default(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64; 
         print(a, ", ")
     end
 
-    s_, o, r = Generative(pm, s, a)
+    s_, o, r = alg.Generative(pm, s, a)
 
     if isEnd(pm, s_)
         return r
@@ -148,122 +164,52 @@ function rollout_default(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64; 
 end
 
 
-function rollout_inf(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64)
+function simulate(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64; variant = nothing, MSState::Union(Vector{Int64}, Nothing) = nothing, bStat::Bool = false, debug::Int64 = 0)
 
-    R = 0.
+    bSparseUCT = false
+    sp_nObsMax = nothing
 
-    while true
-        s_, o, r = Generative(pm, s, pm.actions[1])
-        R += r
-        s = s_
+    bProgressiveWidening = false
+    pw_c = nothing
+    pw_alpha = nothing
 
-        if isEnd(pm, s)
-            break
-        end
-    end
+    bUCB1_tuned = false
 
-    return R
-end
+    bUCB_V = false
+    uv_c = nothing
 
+    bMSUCT = false
+    ms_L = nothing
+    ms_N = nothing
 
-function rollout_none(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64)
-
-    if d == 0
-        return 0
-    end
-
-    s_, o, r = Generative(pm, s, pm.actions[1])
-
-    if isEnd(pm, s_)
-        return r
-    end
-
-    return r + alg.rgamma_ * rollout_none(alg, pm, s_, h, d - 1)
-end
-
-
-function rollout_default_once(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64)
-
-    if d == 0
-        return 0
-    end
-
-    a = alg.default_policy(pm, s)
-    @assert isFeasible(pm, s, a)
-
-    s_, o, r = Generative(pm, s, a)
-
-    if isEnd(pm, s_)
-        return r
-    end
-
-    return r + alg.rgamma_ * rollout_none(alg, pm, s_, h, d - 1)
-end
-
-
-function rollout_CE(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64; debug::Int64 = 0)
-
-    if d == 0
-        return 0
-    end
-
-    a = alg.default_policy(pm, s)
-    @assert a.action != :None_
-
-    if debug > 2
-        print(a, ", ")
-    end
-
-    if a.action == s.heading
-        a_ = pm.actions[1]
-    else
-        a_ = a
-    end
-
-    @assert isFeasible(pm, s, a_)
-
-    s_, o, r = Generative(pm, s, a_)
-
-    if isEnd(pm, s_)
-        push!(alg.CE_samples, (a, r))
-        return r
-    end
-
-    r += alg.rgamma_ * rollout_none(alg, pm, s_, h, d - 1)
-    push!(alg.CE_samples, (a, r))
-
-    return r
-end
-
-
-function rollout(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64; debug::Int64 = 0)
-
-    if alg.rollout_type == :default
-        r = rollout_default(alg, pm, s, h, d, debug = debug)
-
-    elseif alg.rollout_type == :default_once
-        r = rollout_default_once(alg, pm, s, h, d)
-
-    elseif alg.rollout_type == :MC
-        r = 0.
-
-        for n = 1:10
-            r += (rollout_default(alg, pm, s, h, d + 3) - r) / n
+    if variant != nothing
+        if typeof(variant) <: Dict
+            variant = {variant}
         end
 
-    elseif alg.rollout_type == :inf
-        r = rollout_inf(alg, pm, s, h, d)
-
-    elseif alg.rollout_type == :CE_worst || alg.rollout_type == :CE_best
-        r = rollout_CE(alg, pm, s, h, d, debug = debug)
-
+        for variant_ in variant
+            if variant_["type"] == :SparseUCT
+                bSparseUCT = true
+                sp_nObsMax = variant_["nObsMax"]
+            elseif variant_["type"] == :ProgressiveWidening
+                bProgressiveWidening = true
+                pw_c = variant_["c"]
+                pw_alpha = variant_["alpha"]
+            elseif variant_["type"] == :UCB1_tuned
+                bUCB1_tuned = true
+            elseif variant_["type"] == :UCB_V
+                bUCB_V = true
+                uv_c = variant_["c"]
+            elseif variant_["type"] == :MSUCT
+                bMSUCT = true
+                ms_L = variant_["L"]
+                ms_N = variant_["N"]
+                if MSState == nothing
+                    MSState = ones(Int64, pm.sc.nUAV)
+                end
+            end
+        end
     end
-
-    return r
-end
-
-
-function simulate(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64; variant::Union(Dict{ASCIIString, Any}, Nothing) = nothing, bStat::Bool = false, debug::Int64 = 0)
 
     if alg.visualizer != nothing
         updateTree(alg.visualizer, :start_sim, s)
@@ -279,6 +225,8 @@ function simulate(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64; variant
                 else
                     alg.Q[(h, a)] = -Inf
                 end
+
+                alg.X2[(h, a)] = 0
 
                 alg.Os[(h, a)] = Vector{Observation}[]
             end
@@ -315,6 +263,8 @@ function simulate(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64; variant
                 alg.Q[(h, a)] = -Inf
             end
 
+            alg.X2[(h, a)] = 0
+
             alg.Os[(h, a)] = Vector{Observation}[]
         end
 
@@ -322,14 +272,10 @@ function simulate(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64; variant
         alg.T[h] = true
         alg.B[h] = [s]
 
-        if debug > 2
-            print("    rollout: ")
-        end
-
-        ro = rollout(alg, pm, s, h, d, debug = debug)
+        ro = alg.rollout_func(alg, pm, s, h, d, debug = debug)
 
         if debug > 2
-            println(neat(ro * pm.reward_norm_const))
+            println("    rollout: ", neat(ro * pm.reward_norm_const))
         end
 
         return ro
@@ -342,6 +288,12 @@ function simulate(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64; variant
     Qv = Array(Float64, pm.nAction)
     Q = Array(Float64, pm.nAction)
 
+    if bUCB1_tuned || bUCB_V
+        Qv_ = Array(Float64, pm.nAction)
+        var_ = zeros(pm.nAction)
+        RE = zeros(pm.nAction)
+    end
+
     for i = 1:pm.nAction
         a = pm.actions[i]
 
@@ -349,52 +301,150 @@ function simulate(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64; variant
 
         if !isFeasible(pm, s, a)
             Qv[i] = -Inf
+            if bUCB1_tuned || bUCB_V
+                Qv_[i] = -Inf
+            end
         elseif alg.N[(h, a)] == 0
             Qv[i] = Inf
+            if bUCB1_tuned || bUCB_V
+                Qv_[i] = Inf
+            end
         else
-            Qv[i] = alg.Q[(h, a)] + alg.c * sqrt(log(alg.Ns[h]) / alg.N[(h, a)])
+            if bUCB1_tuned || bUCB_V
+                if alg.N[(h, a)] > 1
+                    var_[i] = (alg.X2[(h, a)] - alg.N[(h, a)] * (alg.Q[(h, a)] * alg.Q[(h, a)])) / (alg.N[(h, a)] - 1)
+                    if abs(var_[i]) < 1.e-7
+                        var_[i] = 0.
+                    end
+                    @assert var_[i] >= 0
+                    RE[i] = sqrt(var_[i] / alg.N[(h, a)]) / abs(alg.Q[(h, a)])
+                end
+
+                Qv_[i] = alg.Q[(h, a)] + alg.c * sqrt(log(alg.Ns[h]) / alg.N[(h, a)])
+
+                if bUCB1_tuned
+                    Qv[i] = alg.Q[(h, a)] + sqrt(log(alg.Ns[h]) / alg.N[(h, a)] * min(1/4, var_[i] + sqrt(2 * log(alg.Ns[h]) / alg.N[(h, a)])))
+
+                elseif bUCB_V
+                    Qv[i] = alg.Q[(h, a)] + sqrt(2 * var_[i] * log(alg.Ns[h]) / alg.N[(h, a)]) + uv_c * 3 * log(alg.Ns[h]) / alg.N[(h, a)]
+
+                end
+
+            else
+                Qv[i] = alg.Q[(h, a)] + alg.c * sqrt(log(alg.Ns[h]) / alg.N[(h, a)])
+            end
         end
     end
 
     a = pm.actions[argmax(Qv)]
 
-    s_, o, r = Generative(pm, s, a)
+    # XXX need to backpropagate number of visits through intermediate nodes to root node?
+    if bMSUCT
+        n = 1
+        MSState_ = copy(MSState)
 
-    if variant != nothing
-        if variant["type"] == :SparseUCT
-            if length(alg.Os[(h, a)]) < variant["nObsMax"]
+        loc = [pm.cell_len / 2 + (s.location[1] - 1) * pm.cell_len, pm.cell_len / 2 + (s.location[2] - 1) * pm.cell_len]
+
+        for i = 2:pm.sc.nUAV
+            if MSState[i] < length(ms_L) + 1
+                loc_ = pm.sc_state.UAVStates[i].curr_loc
+
+                if norm(loc - loc_) < ms_L[MSState[i]]
+                    if debug > 2
+                        println("    UAV 1 ", loc, " and UAV ", i, " ", neat(loc_), " hit the level ", MSState[i], " at level", d)
+                    end
+
+                    if ms_N[MSState[i]] > n
+                        n = ms_N[MSState[i]]
+                    end
+
+                    MSState_[i] += 1
+                end
+            end
+        end
+
+        for i = 1:n
+            s_, o, r = Generative(pm, s, a)
+
+            if bSparseUCT
+                if length(alg.Os[(h, a)]) < sp_nObsMax
+                    push!(alg.Os[(h, a)], o)
+                else
+                    o = alg.Os[(h, a)][rand(1:length(alg.Os[(h, a)]))]
+                end
+            elseif bProgressiveWidening
+                if length(alg.Os[(h, a)]) < ceil(pw_c * (alg.N[(h, a)] + 1) ^ pw_alpha)
+                    push!(alg.Os[(h, a)], o)
+                else
+                    o = alg.Os[(h, a)][rand(1:length(alg.Os[(h, a)]))]
+                end
+            end
+
+            if debug > 2 && i == 1
+                println("    Q: ", neat(Q * pm.reward_norm_const), ", Qv: ", neat(Qv), ", (a, o): {", a, ", ", o, "}, s_: ", s_, ", r: ", neat(r * pm.reward_norm_const))
+                if bUCB1_tuned || bUCB_V
+                    println("    Qv_: ", neat(Qv_), ", RE: ", neat(RE))
+                end
+            end
+
+            if alg.visualizer != nothing
+                updateTree(alg.visualizer, :before_sim, s, a, o)
+            end
+
+            q = r + alg.gamma_ * simulate(alg, pm, s_, History([h.history, a, o]), d - 1, variant = variant, MSState = MSState_, debug = debug)
+
+            alg.N[(h, a)] += 1
+            alg.Ns[h] += 1
+            alg.Q[(h, a)] += (q - alg.Q[(h, a)]) / alg.N[(h, a)]
+            alg.X2[(h, a)] += q * q
+
+            if alg.visualizer != nothing
+                updateTree(alg.visualizer, :after_sim, s, a, r * pm.reward_norm_const, q * pm.reward_norm_const, alg.N[(h, a)], alg.Ns[h], alg.Q[(h, a)] * pm.reward_norm_const)
+            end
+        end
+
+    else
+        s_, o, r = Generative(pm, s, a)
+
+        if bSparseUCT
+            if length(alg.Os[(h, a)]) < sp_nObsMax
                 push!(alg.Os[(h, a)], o)
             else
                 o = alg.Os[(h, a)][rand(1:length(alg.Os[(h, a)]))]
             end
-        elseif variant["type"] == :ProgressiveWidening
-            if length(alg.Os[(h, a)]) < ceil(variant["c"] * (alg.N[(h, a)] + 1) ^ variant["alpha"])
+        elseif bProgressiveWidening
+            if length(alg.Os[(h, a)]) < ceil(pw_c * (alg.N[(h, a)] + 1) ^ pw_alpha)
                 push!(alg.Os[(h, a)], o)
             else
                 o = alg.Os[(h, a)][rand(1:length(alg.Os[(h, a)]))]
             end
         end
+
+        if debug > 2
+            println("    Q: ", neat(Q * pm.reward_norm_const), ", Qv: ", neat(Qv), ", (a, o): {", a, ", ", o, "}, s_: ", s_, ", r: ", neat(r * pm.reward_norm_const))
+            if bUCB1_tuned || bUCB_V
+                println("    Qv_: ", neat(Qv_), ", RE: ", neat(RE))
+            end
+        end
+
+        if alg.visualizer != nothing
+            updateTree(alg.visualizer, :before_sim, s, a, o)
+        end
+
+        q = r + alg.gamma_ * simulate(alg, pm, s_, History([h.history, a, o]), d - 1, variant = variant, debug = debug)
+
+        alg.N[(h, a)] += 1
+        alg.Ns[h] += 1
+        alg.Q[(h, a)] += (q - alg.Q[(h, a)]) / alg.N[(h, a)]
+        alg.X2[(h, a)] += q * q
+
+        if alg.visualizer != nothing
+            updateTree(alg.visualizer, :after_sim, s, a, r * pm.reward_norm_const, q * pm.reward_norm_const, alg.N[(h, a)], alg.Ns[h], alg.Q[(h, a)] * pm.reward_norm_const)
+        end
+
     end
-
-    if debug > 2
-        println("    Q: ", neat(Q * pm.reward_norm_const), ", Qv: ", neat(Qv), ", (a, o): {", a, ", ", o, "}, s_: ", s_, ", r: ", neat(r * pm.reward_norm_const))
-    end
-
-    if alg.visualizer != nothing
-        updateTree(alg.visualizer, :before_sim, s, a, o)
-    end
-
-    q = r + alg.gamma_ * simulate(alg, pm, s_, History([h.history, a, o]), d - 1, variant = variant, debug = debug)
-
-    alg.N[(h, a)] += 1
-    alg.Ns[h] += 1
-    alg.Q[(h, a)] += (q - alg.Q[(h, a)]) / alg.N[(h, a)]
 
     push!(alg.B[h], s)
-
-    if alg.visualizer != nothing
-        updateTree(alg.visualizer, :after_sim, s, a, r * pm.reward_norm_const, q * pm.reward_norm_const, alg.N[(h, a)], alg.Ns[h], alg.Q[(h, a)] * pm.reward_norm_const)
-    end
 
     if bStat && d == alg.depth
         return q, a
@@ -404,7 +454,7 @@ function simulate(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64; variant
 end
 
 
-function selectAction(alg::POMCP, pm::POMDP, b::Belief; variant::Union(Dict{ASCIIString, Any}, Nothing) = nothing, bStat::Bool = false, debug::Int64 = 0)
+function selectAction(alg::POMCP, pm::POMDP, b::Belief; variant = nothing, bStat::Bool = false, debug::Int64 = 0)
 
     if alg.visualizer != nothing
         initTree(alg.visualizer)
@@ -509,6 +559,7 @@ function reinitialize(alg::POMCP, a::Action, o::Observation)
     N_new = Dict{(History, Action), Int64}()
     Ns_new = Dict{History, Int64}()
     Q_new = Dict{(History, Action), Float64}()
+    X2_new = Dict{(History, Action), Float64}()
     B_new = Dict{History, Vector{State}}()
     Os_new = Dict{(History, Action), Vector{Observation}}()
 
@@ -530,6 +581,7 @@ function reinitialize(alg::POMCP, a::Action, o::Observation)
         if length(h.history) > 0 && h.history[1] == a && h.history[2] == o
             N_new[(History(h.history[3:end]), action)] = alg.N[key]
             Q_new[(History(h.history[3:end]), action)] = alg.Q[key]
+            X2_new[(History(h.history[3:end]), action)] = alg.X2[key]
             Os_new[(History(h.history[3:end]), action)] = alg.Os[key]
         end
     end
@@ -538,6 +590,7 @@ function reinitialize(alg::POMCP, a::Action, o::Observation)
     alg.N = N_new
     alg.Ns = Ns_new
     alg.Q = Q_new
+    alg.X2 = X2_new
     alg.B = B_new
     alg.Os = Os_new
 
@@ -555,6 +608,7 @@ function initialize(alg::POMCP)
     alg.N = Dict{(History, Action), Int64}()
     alg.Ns = Dict{History, Int64}()
     alg.Q = Dict{(History, Action), Float64}()
+    alg.X2 = Dict{(History, Action), Float64}()
     alg.B = Dict{History, Vector{State}}()
     alg.Os = Dict{(History, Action), Vector{Observation}}()
 
