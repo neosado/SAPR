@@ -560,12 +560,12 @@ function selectAction(alg::POMCP, pm::POMDP, b::Belief; variant = nothing, bStat
             res += (Q[a] - Q_prev)^2
         end
 
-        if i > alg.nloop_min &&  sqrt(res) < alg.eps
-            break
-        end
-
-        if alg.runtime_max != 0 && time() - start_time > alg.runtime_max
-            break
+        if i >= alg.nloop_min
+            if sqrt(res) < alg.eps
+                break
+            elseif alg.runtime_max != 0 && time() - start_time > alg.runtime_max
+                break
+            end
         end
     end
 

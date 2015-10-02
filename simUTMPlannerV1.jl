@@ -728,7 +728,7 @@ function default_policy(pm::UTMPlannerV1, s::UPState)
 end
 
 
-function evalScenario(scenario_number::Union(Int64, Nothing) = nothing; N::Int64 = 100, RE_threshold::Float64 = 0.1, bSeq::Bool = true, nloop::Int64 = 100, runtime::Float64 = 0., ts::Int64 = 0, action::Symbol = :None_, rollout::Union((Symbol, Function), Nothing) = :default, variant = nothing, Scenarios = nothing, iseed::Union(Int64, Nothing) = nothing, debug::Int64 = 0)
+function evalScenario(scenario_number::Union(Int64, Nothing) = nothing; N::Int64 = 100, RE_threshold::Float64 = 0.1, bSeq::Bool = true, nloop_max::Int64 = 100, nloop_min::Int64 = 100, runtime_max::Float64 = 0., ts::Int64 = 0, action::Symbol = :None_, rollout::Union((Symbol, Function), Nothing) = :default, variant = nothing, Scenarios = nothing, iseed::Union(Int64, Nothing) = nothing, debug::Int64 = 0)
 
     if iseed != nothing
         srand(iseed)
@@ -759,7 +759,7 @@ function evalScenario(scenario_number::Union(Int64, Nothing) = nothing; N::Int64
         if !bSeq
             x = simulate(pm, nothing, ts = ts, action = action, variant = variant)
         else
-            alg = POMCP(depth = 5, default_policy = default_policy, nloop_max = nloop, nloop_min = nloop, runtime_max = runtime, c = sqrt(2), gamma_ = 0.95, rollout = rollout, rgamma_ = 0.95)
+            alg = POMCP(depth = 5, default_policy = default_policy, nloop_max = nloop_max, nloop_min = nloop_min, runtime_max = runtime_max, c = sqrt(2), gamma_ = 0.95, rollout = rollout, rgamma_ = 0.95)
             x = simulate(pm, alg, bSeq = bSeq, variant = variant)
         end
 
@@ -840,8 +840,9 @@ if false
     #scenario_number = nothing
     scenario_number = 1
 
-    nloop = 100
-    runtime = 0.
+    nloop_max = 10000
+    nloop_min = 100
+    runtime_max = 1.
 
     # :default, :MC, :inf, :once, :CE_worst, :CE_best, :MS
     #rollout = nothing
@@ -859,7 +860,7 @@ if false
 
     pm = UTMPlannerV1(seed = seed, scenario_number = scenario_number)
 
-    alg = POMCP(depth = 5, default_policy = default_policy, nloop_max = nloop, nloop_min = nloop, runtime_max = runtime, c = sqrt(2), gamma_ = 0.95, rollout = rollout, rgamma_ = 0.95, visualizer = MCTSVisualizer())
+    alg = POMCP(depth = 5, default_policy = default_policy, nloop_max = nloop_max, nloop_min = nloop_min, runtime_max = runtime_max, c = sqrt(2), gamma_ = 0.95, rollout = rollout, rgamma_ = 0.95, visualizer = MCTSVisualizer())
 
     #test(pm, alg)
     #simulate(pm, nothing, draw = true, wait = false, ts = 0, action = :None_)
@@ -919,8 +920,9 @@ function Experiment02()
     sn_list =  [1, 2142, 8440, 15084, 31656]
 
     N = 1000
-    nloop = 10000
-    runtime = 1.
+    nloop_max = 10000
+    nloop_min = 100
+    runtime_max = 1.
 
     #rollout = nothing
     rollout = (:once, rollout_once)
@@ -960,9 +962,9 @@ function Experiment02()
         #for variant in {sparse}
         #for variant in {{sparse, ["type" => :MSUCT, "L" => [1500.], "N" => [4]]}}
         for variant in {nothing, sparse, {sparse, ["type" => :UCB1_tuned]}, {sparse, ["type" => :UCB_V, "c" => 1.]}, {sparse, ["type" => :MSUCT, "L" => [1500.], "N" => [4]]}, {sparse, ["type" => :MSUCT, "L" => [1500.], "N" => [4], "bPropagateN" => true]}}
-            println("N: ", N, ", nloop: ", nloop, ", runtime: ", runtime, ", rollout: ", rollout[1], ", variant: ", variant)
+            println("N: ", N, ", nloop_max: ", nloop_max, ", nloop_min: ", nloop_min, ", runtime_max: ", runtime_max, ", rollout: ", rollout[1], ", variant: ", variant)
 
-            X = evalScenario(sn, N = N, nloop = nloop, runtime = runtime, rollout = rollout, variant = variant, Scenarios = Scenarios, iseed = iseed, debug = debug)
+            X = evalScenario(sn, N = N, nloop_max = nloop_max, nloop_min = nloop_min, runtime_max = runtime_max, rollout = rollout, variant = variant, Scenarios = Scenarios, iseed = iseed, debug = debug)
 
             println("n: ", length(X), ", mean: ", neat(mean(X)), ", std: ", neat(std(X) / sqrt(length(X))), ", RE: ", neat((std(X ) / sqrt(length(X))) / abs(mean(X))))
         end
