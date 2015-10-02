@@ -728,7 +728,7 @@ function default_policy(pm::UTMPlannerV1, s::UPState)
 end
 
 
-function evalScenario(scenario_number::Union(Int64, Nothing) = nothing; N::Int64 = 100, RE_threshold::Float64 = 0.1, bSeq::Bool = true, nloop::Int64 = 100, ts::Int64 = 0, action::Symbol = :None_, rollout::Union((Symbol, Function), Nothing) = :default, variant = nothing, Scenarios = nothing, iseed::Union(Int64, Nothing) = nothing, debug::Int64 = 0)
+function evalScenario(scenario_number::Union(Int64, Nothing) = nothing; N::Int64 = 100, RE_threshold::Float64 = 0.1, bSeq::Bool = true, nloop::Int64 = 100, runtime::Float64 = 0., ts::Int64 = 0, action::Symbol = :None_, rollout::Union((Symbol, Function), Nothing) = :default, variant = nothing, Scenarios = nothing, iseed::Union(Int64, Nothing) = nothing, debug::Int64 = 0)
 
     if iseed != nothing
         srand(iseed)
@@ -759,7 +759,7 @@ function evalScenario(scenario_number::Union(Int64, Nothing) = nothing; N::Int64
         if !bSeq
             x = simulate(pm, nothing, ts = ts, action = action, variant = variant)
         else
-            alg = POMCP(depth = 5, default_policy = default_policy, nloop_max = nloop, nloop_min = nloop, c = sqrt(2), gamma_ = 0.95, rollout = rollout, rgamma_ = 0.95)
+            alg = POMCP(depth = 5, default_policy = default_policy, nloop_max = nloop, nloop_min = nloop, runtime_max = runtime, c = sqrt(2), gamma_ = 0.95, rollout = rollout, rgamma_ = 0.95)
             x = simulate(pm, alg, bSeq = bSeq, variant = variant)
         end
 
@@ -841,7 +841,7 @@ if false
     scenario_number = 1
 
     nloop = 100
-    #nloop = 1000
+    runtime = 0.
 
     # :default, :MC, :inf, :once, :CE_worst, :CE_best, :MS
     #rollout = nothing
@@ -854,15 +854,16 @@ if false
     #variant = ["type" => :UCB1_tuned]
     #variant = ["type" => :UCB_V, "c" => 1.]
     #variant = {["type" => :SparseUCT, "nObsMax" => 8], ["type" => :UCB1_tuned]}
-    variant = {["type" => :SparseUCT, "nObsMax" => 8], ["type" => :MSUCT, "L" => [1000.], "N" => [4]]}
+    #variant = {["type" => :SparseUCT, "nObsMax" => 8], ["type" => :MSUCT, "L" => [1000.], "N" => [4]]}
+    variant = ["type" => :MSUCT, "L" => [1000.], "N" => [4], "bPropagateN" => true]
 
     pm = UTMPlannerV1(seed = seed, scenario_number = scenario_number)
 
-    alg = POMCP(depth = 5, default_policy = default_policy, nloop_max = nloop, nloop_min = nloop, c = sqrt(2), gamma_ = 0.95, rollout = rollout, rgamma_ = 0.95, visualizer = MCTSVisualizer())
+    alg = POMCP(depth = 5, default_policy = default_policy, nloop_max = nloop, nloop_min = nloop, runtime_max = runtime, c = sqrt(2), gamma_ = 0.95, rollout = rollout, rgamma_ = 0.95, visualizer = MCTSVisualizer())
 
     #test(pm, alg)
     #simulate(pm, nothing, draw = true, wait = false, ts = 0, action = :None_)
-    simulate(pm, alg, draw = true, wait = false, bSeq = true, variant = variant, bStat = false, debug = 3)
+    simulate(pm, alg, draw = true, wait = false, bSeq = true, variant = variant, bStat = false, debug = 4)
 end
 
 
@@ -912,13 +913,14 @@ function Experiment02()
 
     srand(seed)
 
-    #sn_list = unique(rand(1024:typemax(Int16), 1100))[1:10]
+    #sn_list = unique(rand(1024:typemax(Int16), 1100))[1:100]
     #sn_list = 1
     #sn_list = [1, 1161, 1250, 1785, 2142, 2620, 8440, 9525, 12506, 15084, 31656]
     sn_list =  [1, 2142, 8440, 15084, 31656]
 
     N = 1000
-    nloop = 100
+    nloop = 10000
+    runtime = 1.
 
     #rollout = nothing
     rollout = (:once, rollout_once)
@@ -956,10 +958,11 @@ function Experiment02()
         #for variant in {nothing, ["type" => :UCB1_tuned], ["type" => :UCB_V, "c" => 1.]}
         #for variant in {nothing, sparse, {sparse, ["type" => :UCB1_tuned]}, {sparse, ["type" => :UCB_V, "c" => 1.]}}
         #for variant in {sparse}
-        for variant in {{sparse, ["type" => :MSUCT, "L" => [1000.], "N" => [4]]}}
-            println("N: ", N, ", nloop: ", nloop, ", rollout: ", rollout[1], ", variant: ", variant)
+        #for variant in {{sparse, ["type" => :MSUCT, "L" => [1500.], "N" => [4]]}}
+        for variant in {nothing, sparse, {sparse, ["type" => :UCB1_tuned]}, {sparse, ["type" => :UCB_V, "c" => 1.]}, {sparse, ["type" => :MSUCT, "L" => [1500.], "N" => [4]]}, {sparse, ["type" => :MSUCT, "L" => [1500.], "N" => [4], "bPropagateN" => true]}}
+            println("N: ", N, ", nloop: ", nloop, ", runtime: ", runtime, ", rollout: ", rollout[1], ", variant: ", variant)
 
-            X = evalScenario(sn, N = N, nloop = nloop, rollout = rollout, variant = variant, Scenarios = Scenarios, iseed = iseed, debug = debug)
+            X = evalScenario(sn, N = N, nloop = nloop, runtime = runtime, rollout = rollout, variant = variant, Scenarios = Scenarios, iseed = iseed, debug = debug)
 
             println("n: ", length(X), ", mean: ", neat(mean(X)), ", std: ", neat(std(X) / sqrt(length(X))), ", RE: ", neat((std(X ) / sqrt(length(X))) / abs(mean(X))))
         end

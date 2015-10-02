@@ -46,6 +46,8 @@ type POMCP <: MCTS
     nloop_min::Int64
     eps::Float64
 
+    runtime_max::Float64
+
     c::Float64
     gamma_::Float64
 
@@ -59,7 +61,7 @@ type POMCP <: MCTS
     visualizer::Union(MCTSVisualizer, Nothing)
 
 
-    function POMCP(;seed::Union(Int64, Nothing) = nothing, depth::Int64 = 3, default_policy::Function = pi_0, nloop_max::Int64 = 10000, nloop_min::Int64 = 10000, eps::Float64 = 1.e-3, c::Float64 = 1., gamma_::Float64 = 0.9, rollout::Union((Symbol, Function), Nothing) = nothing, rgamma_::Float64 = 0.9, visualizer::Union(MCTSVisualizer, Nothing) = nothing)
+    function POMCP(;seed::Union(Int64, Nothing) = nothing, depth::Int64 = 3, default_policy::Function = pi_0, nloop_max::Int64 = 10000, nloop_min::Int64 = 10000, eps::Float64 = 1.e-3, runtime_max::Float64 = 0., c::Float64 = 1., gamma_::Float64 = 0.9, rollout::Union((Symbol, Function), Nothing) = nothing, rgamma_::Float64 = 0.9, visualizer::Union(MCTSVisualizer, Nothing) = nothing)
 
         self = new()
 
@@ -96,6 +98,8 @@ type POMCP <: MCTS
         self.nloop_max = nloop_max
         self.nloop_min = nloop_min
         self.eps = eps
+
+        self.runtime_max = runtime_max
 
         self.c = c
         self.gamma_ = gamma_
@@ -164,7 +168,7 @@ function rollout_default(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64; 
 end
 
 
-function simulate(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64; variant = nothing, MSState::Union(Vector{Int64}, Nothing) = nothing, bStat::Bool = false, debug::Int64 = 0)
+function simulate(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64; variant = nothing, MSState::Union(Dict{Any,Any}, Nothing) = nothing, bStat::Bool = false, debug::Int64 = 0)
 
     bSparseUCT = false
     sp_nObsMax = nothing
@@ -179,6 +183,7 @@ function simulate(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64; variant
     uv_c = nothing
 
     bMSUCT = false
+    ms_bPropagateN = false
     ms_L = nothing
     ms_N = nothing
 
@@ -202,11 +207,17 @@ function simulate(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64; variant
                 uv_c = variant_["c"]
             elseif variant_["type"] == :MSUCT
                 bMSUCT = true
+                if haskey(variant_, "bPropagateN")
+                    ms_bPropagateN = variant_["bPropagateN"]
+                end
                 ms_L = variant_["L"]
                 ms_N = variant_["N"]
                 if MSState == nothing
-                    MSState = ones(Int64, pm.sc.nUAV)
+                    MSState = Dict{Any, Any}()
+                    MSState["level"] = ones(Int64, pm.sc.nUAV)
+                    MSState["nsplit"] = 0
                 end
+                MSState["nsplit"] = 1
             end
         end
     end
@@ -317,7 +328,7 @@ function simulate(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64; variant
                         var_[i] = 0.
                     end
                     @assert var_[i] >= 0
-                    RE[i] = sqrt(var_[i] / alg.N[(h, a)]) / abs(alg.Q[(h, a)])
+                    RE[i] = sqrt(var_[i]) / abs(alg.Q[(h, a)])
                 end
 
                 Qv_[i] = alg.Q[(h, a)] + alg.c * sqrt(log(alg.Ns[h]) / alg.N[(h, a)])
@@ -332,6 +343,7 @@ function simulate(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64; variant
 
             else
                 Qv[i] = alg.Q[(h, a)] + alg.c * sqrt(log(alg.Ns[h]) / alg.N[(h, a)])
+
             end
         end
     end
@@ -340,25 +352,30 @@ function simulate(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64; variant
 
     # XXX need to backpropagate number of visits through intermediate nodes to root node?
     if bMSUCT
+        MSState["nsplit"] = 0
+
+        MSState_ = Dict{Any, Any}()
+        MSState_["level"] = copy(MSState["level"])
+        MSState_["nsplit"] = 0
+
         n = 1
-        MSState_ = copy(MSState)
 
         loc = [pm.cell_len / 2 + (s.location[1] - 1) * pm.cell_len, pm.cell_len / 2 + (s.location[2] - 1) * pm.cell_len]
 
         for i = 2:pm.sc.nUAV
-            if MSState[i] < length(ms_L) + 1
+            if MSState["level"][i] < length(ms_L) + 1
                 loc_ = pm.sc_state.UAVStates[i].curr_loc
 
-                if norm(loc - loc_) < ms_L[MSState[i]]
+                if norm(loc - loc_) < ms_L[MSState["level"][i]]
                     if debug > 2
-                        println("    UAV 1 ", loc, " and UAV ", i, " ", neat(loc_), " hit the level ", MSState[i], " at level", d)
+                        println("    UAV 1 ", loc, " and UAV ", i, " ", neat(loc_), " hit the level ", MSState["level"][i], " at level ", d)
                     end
 
-                    if ms_N[MSState[i]] > n
-                        n = ms_N[MSState[i]]
+                    if ms_N[MSState["level"][i]] > n
+                        n = ms_N[MSState["level"][i]]
                     end
 
-                    MSState_[i] += 1
+                    MSState_["level"][i] += 1
                 end
             end
         end
@@ -380,10 +397,19 @@ function simulate(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64; variant
                 end
             end
 
-            if debug > 2 && i == 1
+            if debug > 2
                 println("    Q: ", neat(Q * pm.reward_norm_const), ", Qv: ", neat(Qv), ", (a, o): {", a, ", ", o, "}, s_: ", s_, ", r: ", neat(r * pm.reward_norm_const))
-                if bUCB1_tuned || bUCB_V
-                    println("    Qv_: ", neat(Qv_), ", RE: ", neat(RE))
+                if debug > 3
+                    Na = zeros(Int64, pm.nAction)
+                    for j = 1:pm.nAction
+                        Na[j] = alg.N[(h, pm.actions[j])]
+                    end
+                    println("    Ns: ", alg.Ns[h], ", N: ", Na)
+                end
+                if i == n
+                    if bUCB1_tuned || bUCB_V
+                        println("    Qv_: ", neat(Qv_), ", RE: ", neat(RE))
+                    end
                 end
             end
 
@@ -393,8 +419,14 @@ function simulate(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64; variant
 
             q = r + alg.gamma_ * simulate(alg, pm, s_, History([h.history, a, o]), d - 1, variant = variant, MSState = MSState_, debug = debug)
 
-            alg.N[(h, a)] += 1
-            alg.Ns[h] += 1
+            if !ms_bPropagateN
+                alg.N[(h, a)] += 1
+                alg.Ns[h] += 1
+            else
+                alg.N[(h, a)] += MSState_["nsplit"]
+                alg.Ns[h] += MSState_["nsplit"]
+                MSState["nsplit"] += MSState_["nsplit"]
+            end
             alg.Q[(h, a)] += (q - alg.Q[(h, a)]) / alg.N[(h, a)]
             alg.X2[(h, a)] += q * q
 
@@ -422,6 +454,13 @@ function simulate(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64; variant
 
         if debug > 2
             println("    Q: ", neat(Q * pm.reward_norm_const), ", Qv: ", neat(Qv), ", (a, o): {", a, ", ", o, "}, s_: ", s_, ", r: ", neat(r * pm.reward_norm_const))
+            if debug > 3
+                Na = zeros(Int64, pm.nAction)
+                for i = 1:pm.nAction
+                    Na[i] = alg.N[(h, pm.actions[i])]
+                end
+                println("    Ns: ", alg.Ns[h], ", N: ", Na)
+            end
             if bUCB1_tuned || bUCB_V
                 println("    Qv_: ", neat(Qv_), ", RE: ", neat(RE))
             end
@@ -483,6 +522,8 @@ function selectAction(alg::POMCP, pm::POMDP, b::Belief; variant = nothing, bStat
         alg.CE_samples = (Action, Int64)[]
     end
 
+    start_time = time()
+
     for i = 1:alg.nloop_max
         if debug > 2
             println("  iteration: ", i)
@@ -520,6 +561,10 @@ function selectAction(alg::POMCP, pm::POMDP, b::Belief; variant = nothing, bStat
         end
 
         if i > alg.nloop_min &&  sqrt(res) < alg.eps
+            break
+        end
+
+        if alg.runtime_max != 0 && time() - start_time > alg.runtime_max
             break
         end
     end
