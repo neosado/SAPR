@@ -1,6 +1,8 @@
 # Author: Youngjun Kim, youngjun@stanford.edu
 # Date: 11/04/2014
 
+push!(LOAD_PATH, ".")
+
 using UTMPlannerV1_
 using Scenario_
 using UTMScenarioGenerator_
@@ -54,7 +56,7 @@ function beliefParticles2Vector(pm, B)
         count_[s] += 1
         sum_ += 1
     end
-    sum_ = float(sum_)
+    sum_ = Float64(sum_)
 
     for s in B.particles
         belief[s] = count_[s] / sum_
@@ -445,7 +447,7 @@ function rollout_CE(alg::POMCP, pm::UTMPlannerV1, s::UPState, h::History, d::Int
 end
 
 
-function rollout_MS(alg::POMCP, pm::UTMPlannerV1, s::UPState, h::History, d::Int64; MSState::Union(Vector{Int64}, Nothing) = nothing, debug::Int64 = 0)
+function rollout_MS(alg::POMCP, pm::UTMPlannerV1, s::UPState, h::History, d::Int64; MSState::Union{Vector{Int64}, Void} = nothing, debug::Int64 = 0)
 
     # XXX hardcoded
     ms_L = [1000]
@@ -728,7 +730,7 @@ function default_policy(pm::UTMPlannerV1, s::UPState)
 end
 
 
-function evalScenario(scenario_number::Union(Int64, Nothing) = nothing; N::Int64 = 100, RE_threshold::Float64 = 0.1, bSeq::Bool = true, nloop_max::Int64 = 100, nloop_min::Int64 = 100, runtime_max::Float64 = 0., ts::Int64 = 0, action::Symbol = :None_, rollout::Union((Symbol, Function), Nothing) = :default, variant = nothing, Scenarios = nothing, iseed::Union(Int64, Nothing) = nothing, debug::Int64 = 0)
+function evalScenario(scenario_number::Union{Int64, Void} = nothing; N::Int64 = 100, RE_threshold::Float64 = 0.1, bSeq::Bool = true, nloop_max::Int64 = 100, nloop_min::Int64 = 100, runtime_max::Float64 = 0., ts::Int64 = 0, action::Symbol = :None_, rollout::Union{Tuple{Symbol, Function}, Void} = :default, variant = nothing, Scenarios = nothing, iseed::Union{Int64, Void} = nothing, debug::Int64 = 0)
 
     if iseed != nothing
         srand(iseed)
@@ -747,7 +749,7 @@ function evalScenario(scenario_number::Union(Int64, Nothing) = nothing; N::Int64
         if iseed != nothing
             pm = UTMPlannerV1(scenario_number = scenario_number, Scenarios = Scenarios)
         else
-            seed = int64(time())
+            seed = round(Int64, time())
 
             if debug > 0
                 print(seed, " ")
@@ -777,7 +779,7 @@ function evalScenario(scenario_number::Union(Int64, Nothing) = nothing; N::Int64
             RE = sqrt(varX) / abs(meanX)
         end
 
-        if n % int64(N / 10) == 0
+        if n % round(Int64, N / 10) == 0
             if RE < RE_threshold
                 break
             end
@@ -803,7 +805,7 @@ end
 
 
 if false
-    pm = UTMPlannerV1(seed = int64(time()))
+    pm = UTMPlannerV1(seed = round(Int64, time()))
 
     pm.sc.UAVs[1].navigation = :GPS_INS
 
@@ -834,7 +836,7 @@ end
 
 
 if false
-    seed = int64(time())
+    seed = round(Int64, time())
     println("seed: ", seed)
 
     #scenario_number = nothing
@@ -850,13 +852,13 @@ if false
     #rollout = (:MS, rollout_MS)
 
     #variant = nothing
-    #variant = ["type" => :SparseUCT, "nObsMax" => 8]
-    #variant = ["type" => :ProgressiveWidening, "c" => 2, "alpha" => 0.4]
-    #variant = ["type" => :UCB1_tuned]
-    #variant = ["type" => :UCB_V, "c" => 1.]
-    #variant = {["type" => :SparseUCT, "nObsMax" => 8], ["type" => :UCB1_tuned]}
-    #variant = {["type" => :SparseUCT, "nObsMax" => 8], ["type" => :MSUCT, "L" => [1000.], "N" => [4]]}
-    variant = ["type" => :MSUCT, "L" => [1000.], "N" => [4], "bPropagateN" => true]
+    #variant = Dict{ASCIIString, Any}("type" => :SparseUCT, "nObsMax" => 8)
+    #variant = Dict{ASCIIString, Any}("type" => :ProgressiveWidening, "c" => 2, "alpha" => 0.4]
+    #variant = Dict{ASCIIString, Any}("type" => :UCB1_tuned)
+    #variant = Dict{ASCIIString, Any}("type" => :UCB_V, "c" => 1.)
+    #variant = Dict{ASCIIString, Any}(Dict{ASCIIString, Any}("type" => :SparseUCT, "nObsMax" => 8), Dict{ASCIIString, Any}("type" => :UCB1_tuned))
+    #variant = Dict{ASCIIString, Any}(Dict{ASCIIString, Any}("type" => :SparseUCT, "nObsMax" => 8), Dict{ASCIIString, Any}("type" => :MSUCT, "L" => [1000.], "N" => [4]))
+    variant = Dict{ASCIIString, Any}("type" => :MSUCT, "L" => [1000.], "N" => [4], "bPropagateN" => true)
 
     pm = UTMPlannerV1(seed = seed, scenario_number = scenario_number)
 
@@ -870,7 +872,7 @@ end
 
 function Experiment01()
 
-    srand(int64(time()))
+    srand(round(Int64, time()))
     sn_list = unique(rand(1024:typemax(Int16), 1100))[1:10]
 
     N = 100
@@ -908,7 +910,7 @@ end
 
 function Experiment02()
 
-    seed = int64(time())
+    seed = round(int64, time())
 
     println("seed: ", seed)
 
@@ -928,8 +930,8 @@ function Experiment02()
     rollout = (:once, rollout_once)
     #rollout = (:MS, rollout_MS)
 
-    sparse = ["type" => :SparseUCT, "nObsMax" => 8]
-    pw = ["type" => :ProgressiveWidening, "c" => 2, "alpha" => 0.4]
+    sparse = Dict{ASCIIString, Any}("type" => :SparseUCT, "nObsMax" => 8)
+    pw = Dict{ASCIIString, Any}("type" => :ProgressiveWidening, "c" => 2, "alpha" => 0.4)
 
     debug = 0
 
@@ -940,28 +942,28 @@ function Experiment02()
 
         iseed = sn
 
-        #for variant in {nothing, sparse, pw}
-        #for variant in {nothing,
-        #    ["type" => :SparseUCT, "nObsMax" => 1],
-        #    ["type" => :SparseUCT, "nObsMax" => 2],
-        #    ["type" => :SparseUCT, "nObsMax" => 4],
-        #    ["type" => :SparseUCT, "nObsMax" => 6],
-        #    ["type" => :SparseUCT, "nObsMax" => 8],
-        #    ["type" => :SparseUCT, "nObsMax" => 10],
-        #    ["type" => :SparseUCT, "nObsMax" => 12],
-        #    ["type" => :ProgressiveWidening, "c" => 1, "alpha" => 0.4],
-        #    ["type" => :ProgressiveWidening, "c" => 2, "alpha" => 0.4],
-        #    ["type" => :ProgressiveWidening, "c" => 4, "alpha" => 0.4],
-        #    ["type" => :ProgressiveWidening, "c" => 6, "alpha" => 0.4],
-        #    ["type" => :ProgressiveWidening, "c" => 2, "alpha" => 0.1],
-        #    ["type" => :ProgressiveWidening, "c" => 2, "alpha" => 0.2],
-        #    ["type" => :ProgressiveWidening, "c" => 2, "alpha" => 0.4],
-        #    ["type" => :ProgressiveWidening, "c" => 2, "alpha" => 0.6]}
-        #for variant in {nothing, ["type" => :UCB1_tuned], ["type" => :UCB_V, "c" => 1.]}
-        #for variant in {nothing, sparse, {sparse, ["type" => :UCB1_tuned]}, {sparse, ["type" => :UCB_V, "c" => 1.]}}
-        #for variant in {sparse}
-        #for variant in {{sparse, ["type" => :MSUCT, "L" => [1500.], "N" => [4]]}}
-        for variant in {nothing, sparse, {sparse, ["type" => :UCB1_tuned]}, {sparse, ["type" => :UCB_V, "c" => 1.]}, {sparse, ["type" => :MSUCT, "L" => [1500.], "N" => [4]]}, {sparse, ["type" => :MSUCT, "L" => [1500.], "N" => [4], "bPropagateN" => true]}}
+        #for variant in Any[nothing, sparse, pw]
+        #for variant in Any[nothing,
+        #    Dict{ASCIIString, Any}("type" => :SparseUCT, "nObsMax" => 1),
+        #    Dict{ASCIIString, Any}("type" => :SparseUCT, "nObsMax" => 2],
+        #    Dict{ASCIIString, Any}("type" => :SparseUCT, "nObsMax" => 4],
+        #    Dict{ASCIIString, Any}("type" => :SparseUCT, "nObsMax" => 6],
+        #    Dict{ASCIIString, Any}("type" => :SparseUCT, "nObsMax" => 8],
+        #    Dict{ASCIIString, Any}("type" => :SparseUCT, "nObsMax" => 10],
+        #    Dict{ASCIIString, Any}("type" => :SparseUCT, "nObsMax" => 12],
+        #    Dict{ASCIIString, Any}("type" => :ProgressiveWidening, "c" => 1, "alpha" => 0.4),
+        #    Dict{ASCIIString, Any}("type" => :ProgressiveWidening, "c" => 2, "alpha" => 0.4),
+        #    Dict{ASCIIString, Any}("type" => :ProgressiveWidening, "c" => 4, "alpha" => 0.4),
+        #    Dict{ASCIIString, Any}("type" => :ProgressiveWidening, "c" => 6, "alpha" => 0.4),
+        #    Dict{ASCIIString, Any}("type" => :ProgressiveWidening, "c" => 2, "alpha" => 0.1),
+        #    Dict{ASCIIString, Any}("type" => :ProgressiveWidening, "c" => 2, "alpha" => 0.2),
+        #    Dict{ASCIIString, Any}("type" => :ProgressiveWidening, "c" => 2, "alpha" => 0.4),
+        #    Dict{ASCIIString, Any}("type" => :ProgressiveWidening, "c" => 2, "alpha" => 0.6])
+        #for variant in Any[nothing, Dict{ASCIIString, Any}("type" => :UCB1_tuned), Dict{ASCIIString, Any}("type" => :UCB_V, "c" => 1.)]
+        #for variant in Any[nothing, sparse, Any[sparse, Dict{ASCIIString, Any}("type" => :UCB1_tuned)], Any[sparse, Dict{ASCIIString, Any}("type" => :UCB_V, "c" => 1.)]]
+        #for variant in Any[sparse]
+        #for variant in Any[Any[sparse, Dict{ASCIIString, Any}("type" => :MSUCT, "L" => [1500.], "N" => [4])]]
+        for variant in Any[nothing, sparse, Any[sparse, Dict{ASCIIString, Any}("type" => :UCB1_tuned)], Any[sparse, Dict{ASCIIString, Any}("type" => :UCB_V, "c" => 1.)], Any[sparse, Dict{ASCIIString, Any}("type" => :MSUCT, "L" => [1500.], "N" => [4])], Any[sparse, Dict{ASCIIString, Any}("type" => :MSUCT, "L" => [1500.], "N" => [4], "bPropagateN" => true)]]
             println("N: ", N, ", nloop_max: ", nloop_max, ", nloop_min: ", nloop_min, ", runtime_max: ", runtime_max, ", rollout: ", rollout[1], ", variant: ", variant)
 
             X = evalScenario(sn, N = N, nloop_max = nloop_max, nloop_min = nloop_min, runtime_max = runtime_max, rollout = rollout, variant = variant, Scenarios = Scenarios, iseed = iseed, debug = debug)

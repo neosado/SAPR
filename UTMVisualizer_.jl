@@ -23,16 +23,16 @@ import Visualizer_.saveAnimation
 
 type UTMVisualizer <: Visualizer
 
-    fig::Union(Figure, Nothing)
-    ax1::Union(PyObject, Nothing)
+    fig::Union{Figure, Void}
+    ax1::Union{PyObject, Void}
 
-    artists::Union(Vector{PyObject}, Nothing)
+    artists::Union{Vector{PyObject}, Void}
 
     ims::Vector{Any}
 
     wait::Bool
 
-    uav_start_locs::Union(Vector{Vector{Float64}}, Nothing)
+    uav_start_locs::Union{Vector{Vector{Float64}}, Void}
 
 
     function UTMVisualizer(;wait = false)
@@ -44,7 +44,7 @@ type UTMVisualizer <: Visualizer
 
         self.artists = nothing
 
-        self.ims = {}
+        self.ims = Any[]
 
         self.wait = wait
 
@@ -104,7 +104,7 @@ function visInit(vis::UTMVisualizer, sc::Scenario, sc_state::ScenarioState)
 
 
     for uav in sc.UAVs
-        planned_path = ax1[:plot]([uav.start_loc[1], map(x -> x[1], uav.waypoints), uav.end_loc[1]], [uav.start_loc[2], map(x -> x[2], uav.waypoints), uav.end_loc[2]], ".--", color = "0.7")
+        planned_path = ax1[:plot]([uav.start_loc[1]; map(x -> x[1], uav.waypoints); uav.end_loc[1]], [uav.start_loc[2]; map(x -> x[2], uav.waypoints); uav.end_loc[2]], ".--", color = "0.7")
         append!(artists, planned_path)
     end
 
@@ -135,7 +135,7 @@ function visUpdate(vis::UTMVisualizer, sc::Scenario, sc_state::ScenarioState)
     ax1 = vis.ax1
 
 
-    text = vis.ax1[:text](0.5, -0.02, "$(int(sc.x))ft x $(int(sc.y))ft, seed: $(sc.seed)", horizontalalignment = "center", verticalalignment = "top", transform = vis.ax1[:transAxes])
+    text = vis.ax1[:text](0.5, -0.02, "$(round(Int64, sc.x))ft x $(round(Int64, sc.y))ft, seed: $(sc.seed)", horizontalalignment = "center", verticalalignment = "top", transform = vis.ax1[:transAxes])
     push!(vis.artists, text)
 
 
@@ -165,7 +165,7 @@ function visUpdate(vis::UTMVisualizer, sc::Scenario, sc_state::ScenarioState)
 end
 
 
-function visUpdate(vis::UTMVisualizer, sc::Scenario, sc_state::ScenarioState, timestep::Int64; sim::Union((ASCIIString, Union(Vector{Float64}, Nothing), Union(Int64, Float64), Union(Int64, Float64)), Nothing) = nothing)
+function visUpdate(vis::UTMVisualizer, sc::Scenario, sc_state::ScenarioState, timestep::Int64; sim::Union{Tuple{ASCIIString, Union{Vector{Float64}, Void}, Union{Int64, Float64}, Union{Int64, Float64}}, Void} = nothing)
 
     fig = vis.fig
     ax1 = vis.ax1
@@ -175,7 +175,7 @@ function visUpdate(vis::UTMVisualizer, sc::Scenario, sc_state::ScenarioState, ti
         text = vis.ax1[:text](0.5, -0.02, "timestep: $timestep, action: None_, observation: none, reward: 0, total reward: 0", horizontalalignment = "center", verticalalignment = "top", transform = vis.ax1[:transAxes])
     else
         action, observation, r, R  = sim
-        text = vis.ax1[:text](0.5, -0.02, "timestep: $timestep, action: $action, observation: $(int64(observation)), reward: $r, total reward: $R", horizontalalignment = "center", verticalalignment = "top", transform = vis.ax1[:transAxes])
+        text = vis.ax1[:text](0.5, -0.02, "timestep: $timestep, action: $action, observation: $(round(Int64, observation)), reward: $r, total reward: $R", horizontalalignment = "center", verticalalignment = "top", transform = vis.ax1[:transAxes])
     end
     push!(vis.artists, text)
 
@@ -202,7 +202,7 @@ function visUpdate(vis::UTMVisualizer, sc::Scenario, sc_state::ScenarioState, ti
             marker_style = "go"
         end
 
-        uav_path = ax1[:plot]([map(x -> x[1], uav_state.past_locs), uav_state.curr_loc[1]], [map(x -> x[2], uav_state.past_locs), uav_state.curr_loc[2]], "r", alpha = path_alpha)
+        uav_path = ax1[:plot]([map(x -> x[1], uav_state.past_locs); uav_state.curr_loc[1]], [map(x -> x[2], uav_state.past_locs); uav_state.curr_loc[2]], "r", alpha = path_alpha)
         append!(vis.artists, uav_path)
 
         if uav_state.status == :flying || uav_state.status == :landed
@@ -232,7 +232,7 @@ end
 
 function updateAnimation(vis::UTMVisualizer, timestep::Int64 = -1; bSaveFrame::Bool = false, filename::ASCIIString = "sim.png")
 
-    append!(vis.ims, {vis.artists})
+    append!(vis.ims, Any[vis.artists])
 
     if bSaveFrame
         if timestep == -1

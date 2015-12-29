@@ -3,8 +3,8 @@
 
 module UTMPlannerV1_
 
-import Base.isequal, Base.hash, Base.copy
-import Base.start, Base.done, Base.next
+import Base: isequal, ==, hash, copy
+import Base: start, done, next
 
 export UTMPlannerV1, UPState, UPAction, UPObservation, UPBelief, UPBeliefVector, UPBeliefParticles, History
 export UPStateIter, UPObservationIter
@@ -23,16 +23,7 @@ using Scenario_
 using UTMScenarioGenerator_
 
 
-import POMDP_.Generative
-import POMDP_.nextState
-import POMDP_.observe
-import POMDP_.reward
-import POMDP_.isEnd
-import POMDP_.isFeasible
-import POMDP_.sampleBelief
-import POMDP_.updateBelief
-import POMDP_.tranProb
-import POMDP_.obsProb
+import POMDP_: Generative, nextState, observe, reward, isEnd, isFeasible, sampleBelief, updateBelief, tranProb, obsProb
 
 
 #
@@ -41,7 +32,7 @@ import POMDP_.obsProb
 
 immutable UPState <: State
 
-    location::(Int64, Int64)
+    location::Tuple{Int64, Int64}
     status::Symbol
     heading::Symbol
     t::Int64
@@ -64,7 +55,7 @@ end
 
 immutable UPObservation <: Observation
 
-    location::(Int64, Int64)
+    location::Tuple{Int64, Int64}
 end
 
 type UPObservationIter
@@ -93,7 +84,7 @@ end
 
 type UTMPlannerV1 <: POMDP
 
-    seed::Union(Int64, Nothing)
+    seed::Union{Int64, Void}
 
     sc::Scenario
     sc_state::ScenarioState
@@ -103,13 +94,13 @@ type UTMPlannerV1 <: POMDP
     cell_len::Float64   # ft
     n::Int64
 
-    states::Union(UPStateIter, Nothing)
+    states::Union{UPStateIter, Void}
     nState::Int64
 
     actions::Vector{UPAction}
     nAction::Int64
 
-    observations::Union(UPObservationIter, Nothing)
+    observations::Union{UPObservationIter, Void}
     nObservation::Int64
 
     obsProbMat::Array{Float64, 2}
@@ -120,7 +111,7 @@ type UTMPlannerV1 <: POMDP
     reward_norm_const::Float64
 
 
-    function UTMPlannerV1(; seed::Union(Int64, Nothing) = nothing, scenario_number::Union(Int64, Nothing) = nothing, Scenarios = nothing)
+    function UTMPlannerV1(; seed::Union{Int64, Void} = nothing, scenario_number::Union{Int64, Void} = nothing, Scenarios = nothing)
 
         self = new()
 
@@ -128,7 +119,7 @@ type UTMPlannerV1 <: POMDP
             if seed != 0
                 self.seed = seed
             else
-                self.seed = int64(time())
+                self.seed = round(Int64, time())
             end
 
             srand(self.seed)
@@ -146,7 +137,7 @@ type UTMPlannerV1 <: POMDP
         self.cell_len = 30.
         @assert self.sc.x == self.sc.y && self.sc.x % self.cell_len == 0
 
-        self.n = int64(self.sc.x / self.cell_len)
+        self.n = round(Int64, self.sc.x / self.cell_len)
         @assert self.n % 2 == 1
 
         # XXX think about how to handle time in state
@@ -204,20 +195,20 @@ function coord2grid(up::UTMPlannerV1, coord::Vector{Float64})
     if x == 0.
         xg = 1
     else
-        xg = int64(ceil(x / up.cell_len))
+        xg = round(Int64, ceil(x / up.cell_len))
     end
 
     if y == 0.
         yg = 1
     else
-        yg = int64(ceil(y / up.cell_len))
+        yg = round(Int64, ceil(y / up.cell_len))
     end
 
     return (xg, yg)
 end
 
 
-function grid2coord(up::UTMPlannerV1, grid::(Int64, Int64))
+function grid2coord(up::UTMPlannerV1, grid::Tuple{Int64, Int64})
 
     xg, yg = grid
 
@@ -269,19 +260,19 @@ function Generative(up::UTMPlannerV1, s::UPState, a::UPAction)
                 dist += computeDist(uav_state.curr_loc, uav.waypoints[aindex], uav.waypoints[i])
             end
 
-            r += -int64(ceil(dist / up.cell_len))
+            r += -round(Int64, ceil(dist / up.cell_len))
 
         elseif atype == :end_
             for i = hindex:uav.nwaypoint
                 dist += computeDist(uav_state.curr_loc, uav.end_loc, uav.waypoints[i])
             end
 
-            r += -int64(ceil(dist / up.cell_len))
+            r += -round(Int64, ceil(dist / up.cell_len))
 
         elseif atype == :base
             c1 = 1.
             c2 = 0.
-            r += -int64(ceil(norm(aloc - uav_state.curr_loc) / up.cell_len * c1 + c2))
+            r += -round(Int64, ceil(norm(aloc - uav_state.curr_loc) / up.cell_len * c1 + c2))
 
         end
     end
@@ -390,19 +381,19 @@ function reward(up::UTMPlannerV1, s::UPState, a::UPAction)
                 dist += computeDist(uav_state.curr_loc, uav.waypoints[aindex], uav.waypoints[i])
             end
 
-            r += -int64(ceil(dist / up.cell_len))
+            r += -round(Int64, ceil(dist / up.cell_len))
 
         elseif atype == :end_
             for i = hindex:uav.nwaypoint
                 dist += computeDist(uav_state.curr_loc, uav.end_loc, uav.waypoints[i])
             end
 
-            r += -int64(ceil(dist / up.cell_len))
+            r += -round(Int64, ceil(dist / up.cell_len))
 
         elseif atype == :base
             c1 = 1.
             c2 = 0.
-            r += -int64(ceil(norm(aloc - uav_state.curr_loc) / up.cell_len * c1 + c2))
+            r += -round(Int64, ceil(norm(aloc - uav_state.curr_loc) / up.cell_len * c1 + c2))
 
         end
     end
@@ -512,7 +503,7 @@ function ==(s1::UPState, s2::UPState)
     return (s1.location == s2.location) && (s1.status == s2.status) && (s1.heading == s2.heading) && (s1.t == s2.t)
 end
 
-function hash(s::UPState, h::Uint64 = zero(Uint64))
+function hash(s::UPState, h::UInt64 = zero(UInt64))
 
     return hash(s.t, hash(s.heading, hash(s.status, hash(s.location, h))))
 end
@@ -533,7 +524,7 @@ function ==(a1::UPAction, a2::UPAction)
     return (a1.action == a2.action)
 end
 
-function hash(a::UPAction, h::Uint64 = zero(Uint64))
+function hash(a::UPAction, h::UInt64 = zero(UInt64))
 
     return hash(a.action, h)
 end
@@ -549,23 +540,23 @@ function ==(o1::UPObservation, o2::UPObservation)
     return (o1.location == o2.location)
 end
 
-function hash(o::UPObservation, h::Uint64 = zero(Uint64))
+function hash(o::UPObservation, h::UInt64 = zero(UInt64))
 
     return hash(o.location, h)
 end
 
 
-function isequal(k1::(History, UPAction), k2::(History, UPAction))
+function isequal(k1::Tuple{History, UPAction}, k2::Tuple{History, UPAction})
 
     return isequal(k1[1], k2[1]) && isequal(k1[2], k2[2])
 end
 
-function ==(k1::(History, UPAction), k2::(History, UPAction))
+function ==(k1::Tuple{History, UPAction}, k2::Tuple{History, UPAction})
 
     return (k1[1] == k2[1]) && (k1[2] == k2[2])
 end
 
-function hash(k::(History, UPAction), h::Uint64 = zero(Uint64))
+function hash(k::Tuple{History, UPAction}, h::UInt64 = zero(UInt64))
 
     return hash(k[2], hash(k[1], h))
 end

@@ -24,7 +24,7 @@ import MCTS_.initialize
 
 type POMCP <: MCTS
 
-    seed::Union(Int64, Nothing)
+    seed::Union{Int64, Void}
 
     depth::Int64
 
@@ -33,14 +33,14 @@ type POMCP <: MCTS
     default_policy::Function
 
     T::Dict{History, Bool}
-    N::Dict{(History, Action), Int64}
+    N::Dict{Tuple{History, Action}, Int64}
     Ns::Dict{History, Int64}
-    Q::Dict{(History, Action), Float64}
+    Q::Dict{Tuple{History, Action}, Float64}
 
-    X2::Dict{(History, Action), Float64}
+    X2::Dict{Tuple{History, Action}, Float64}
 
     B::Dict{History, Vector{State}}
-    Os::Dict{(History, Action), Vector{Observation}}
+    Os::Dict{Tuple{History, Action}, Vector{Observation}}
 
     nloop_max::Int64
     nloop_min::Int64
@@ -54,14 +54,14 @@ type POMCP <: MCTS
     rollout_type::Symbol
     rollout_func::Function
     rgamma_::Float64
-    CE_samples::Vector{(Action, Float64)}
+    CE_samples::Vector{Tuple{Action, Float64}}
 
     reuse::Bool
 
-    visualizer::Union(MCTSVisualizer, Nothing)
+    visualizer::Union{MCTSVisualizer, Void}
 
 
-    function POMCP(;seed::Union(Int64, Nothing) = nothing, depth::Int64 = 3, default_policy::Function = pi_0, nloop_max::Int64 = 10000, nloop_min::Int64 = 10000, eps::Float64 = 1.e-3, runtime_max::Float64 = 0., c::Float64 = 1., gamma_::Float64 = 0.9, rollout::Union((Symbol, Function), Nothing) = nothing, rgamma_::Float64 = 0.9, visualizer::Union(MCTSVisualizer, Nothing) = nothing)
+    function POMCP(;seed::Union{Int64, Void} = nothing, depth::Int64 = 3, default_policy::Function = pi_0, nloop_max::Int64 = 10000, nloop_min::Int64 = 10000, eps::Float64 = 1.e-3, runtime_max::Float64 = 0., c::Float64 = 1., gamma_::Float64 = 0.9, rollout::Union{Tuple{Symbol, Function}, Void} = nothing, rgamma_::Float64 = 0.9, visualizer::Union{MCTSVisualizer, Void} = nothing)
 
         self = new()
 
@@ -86,14 +86,14 @@ type POMCP <: MCTS
         self.default_policy = default_policy
 
         self.T = Dict{History, Bool}()
-        self.N = Dict{(History, Action), Int64}()
+        self.N = Dict{Tuple{History, Action}, Int64}()
         self.Ns = Dict{History, Int64}()
-        self.Q = Dict{(History, Action), Float64}()
+        self.Q = Dict{Tuple{History, Action}, Float64}()
 
-        self.X2 = Dict{(History, Action), Float64}()
+        self.X2 = Dict{Tuple{History, Action}, Float64}()
 
         self.B = Dict{History, Vector{State}}()
-        self.Os = Dict{(History, Action), Vector{Observation}}()
+        self.Os = Dict{Tuple{History, Action}, Vector{Observation}}()
 
         self.nloop_max = nloop_max
         self.nloop_min = nloop_min
@@ -168,7 +168,7 @@ function rollout_default(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64; 
 end
 
 
-function simulate(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64; variant = nothing, MSState::Union(Dict{Any,Any}, Nothing) = nothing, bStat::Bool = false, debug::Int64 = 0)
+function simulate(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64; variant = nothing, MSState::Union{Dict{Any,Any}, Void} = nothing, bStat::Bool = false, debug::Int64 = 0)
 
     bSparseUCT = false
     sp_nObsMax = nothing
@@ -189,7 +189,7 @@ function simulate(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64; variant
 
     if variant != nothing
         if typeof(variant) <: Dict
-            variant = {variant}
+            variant = Any[variant]
         end
 
         for variant_ in variant
@@ -601,12 +601,12 @@ end
 function reinitialize(alg::POMCP, a::Action, o::Observation)
 
     T_new = Dict{History, Bool}()
-    N_new = Dict{(History, Action), Int64}()
+    N_new = Dict{Tuple{History, Action}, Int64}()
     Ns_new = Dict{History, Int64}()
-    Q_new = Dict{(History, Action), Float64}()
-    X2_new = Dict{(History, Action), Float64}()
+    Q_new = Dict{Tuple{History, Action}, Float64}()
+    X2_new = Dict{Tuple{History, Action}, Float64}()
     B_new = Dict{History, Vector{State}}()
-    Os_new = Dict{(History, Action), Vector{Observation}}()
+    Os_new = Dict{Tuple{History, Action}, Vector{Observation}}()
 
     for h in keys(alg.T)
         if length(h.history) > 0 && h.history[1] == a && h.history[2] == o
@@ -650,12 +650,12 @@ end
 function initialize(alg::POMCP)
 
     alg.T = Dict{History, Bool}()
-    alg.N = Dict{(History, Action), Int64}()
+    alg.N = Dict{Tuple{History, Action}, Int64}()
     alg.Ns = Dict{History, Int64}()
-    alg.Q = Dict{(History, Action), Float64}()
-    alg.X2 = Dict{(History, Action), Float64}()
+    alg.Q = Dict{Tuple{History, Action}, Float64}()
+    alg.X2 = Dict{Tuple{History, Action}, Float64}()
     alg.B = Dict{History, Vector{State}}()
-    alg.Os = Dict{(History, Action), Vector{Observation}}()
+    alg.Os = Dict{Tuple{History, Action}, Vector{Observation}}()
 
     alg.reuse = false
 

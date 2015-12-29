@@ -125,11 +125,11 @@ function scenario_1()
 
     UAVInfo = Any[]
 
-    push!(UAVInfo, {"uav_info" => {"route" => {[100., 2500.], [2000., 2000.], [3600., 3000.], [5500., 3000.]}, "v" => 40}})
-    push!(UAVInfo, {"uav_info" => {"route" => {[3200., 100.], [4400., 1800.], [3800., 3900.], [4400., 5500.]}, "v" => 23}})
-    push!(UAVInfo, {"uav_info" => {"route" => {[4900., 2200.], [1600., 1200.], [-500., 900.]}, "v" => 25}})
-    push!(UAVInfo, {"uav_info" => {"route" => {[4000., 4900.], [2000., 3000.], [1500., -500.]}, "v" => 50}})
-    push!(UAVInfo, {"uav_info" => {"route" => {[400., 4900.], [2700., 4200.], [5500., 4000.]}, "v" => 40}})
+    push!(UAVInfo, Dict{ASCIIString, Any}("uav_info" => Dict{ASCIIString, Any}("route" => Vector{Float64}[[100., 2500.], [2000., 2000.], [3600., 3000.], [5500., 3000.]], "v" => 40)))
+    push!(UAVInfo, Dict{ASCIIString, Any}("uav_info" => Dict{ASCIIString, Any}("route" => Vector{Float64}[[3200., 100.], [4400., 1800.], [3800., 3900.], [4400., 5500.]], "v" => 23)))
+    push!(UAVInfo, Dict{ASCIIString, Any}("uav_info" => Dict{ASCIIString, Any}("route" => Vector{Float64}[[4900., 2200.], [1600., 1200.], [-500., 900.]], "v" => 25)))
+    push!(UAVInfo, Dict{ASCIIString, Any}("uav_info" => Dict{ASCIIString, Any}("route" => Vector{Float64}[[4000., 4900.], [2000., 3000.], [1500., -500.]], "v" => 50)))
+    push!(UAVInfo, Dict{ASCIIString, Any}("uav_info" => Dict{ASCIIString, Any}("route" => Vector{Float64}[[400., 4900.], [2700., 4200.], [5500., 4000.]], "v" => 40)))
 
     sc, sc_state = generateScenarioWithParams(params, UAVInfo, v_def = 40., v_min = 20., v_max = 60.)
 
@@ -162,8 +162,8 @@ function generateBases(rng::AbstractRNG; x::Float64 = 0., y::Float64 = 0., margi
         while true
             bOk = true
 
-            x_ = float64(int64(margin + rand(rng) * (x - 2 * margin)))
-            y_ = float64(int64(margin + rand(rng) * (y - 2 * margin)))
+            x_ = Float64(round(Int64, margin + rand(rng) * (x - 2 * margin)))
+            y_ = Float64(round(Int64, margin + rand(rng) * (y - 2 * margin)))
 
             for base_loc in bases
                 if norm([x_, y_] - base_loc) < min_dist
@@ -190,18 +190,18 @@ function generateUAV(rng::AbstractRNG; x::Float64 = 0., y::Float64 = 0., margin:
 
     if start_side == 1
         x_ = -dist_mean / 2
-        y_ = float64(int64(margin + rand(rng) * (y - 2 * margin)))
+        y_ = Float64(round(Int64, margin + rand(rng) * (y - 2 * margin)))
         u = [1., 0.]
     elseif start_side == 2
-        x_ = float64(int64(margin + rand(rng) * (x - 2 * margin)))
+        x_ = Float64(round(Int64, margin + rand(rng) * (x - 2 * margin)))
         y_ = -dist_mean / 2
         u = [0., 1.]
     elseif start_side == 3
         x_ = x + dist_mean / 2
-        y_ = float64(int64(margin + rand(rng) * (y - 2 * margin)))
+        y_ = Float64(round(Int64, margin + rand(rng) * (y - 2 * margin)))
         u = [-1., 0.]
     elseif start_side == 4
-        x_ = float64(int64(margin + rand(rng) * (x - 2 * margin)))
+        x_ = Float64(round(Int64, margin + rand(rng) * (x - 2 * margin)))
         y_ = y + dist_mean / 2
         u = [0., -1.]
     end
@@ -270,7 +270,7 @@ function generateUAV(rng::AbstractRNG; x::Float64 = 0., y::Float64 = 0., margin:
         v = v_max
     end
 
-    uav_info = {"route" => route, "v" => v}
+    uav_info = Dict{ASCIIString, Any}("route" => route, "v" => v)
 
     return uav_info
 end
@@ -280,7 +280,7 @@ function getInitLocation(rng::AbstractRNG, params::ScenarioParams, route::Vector
 
     # assume that whole planned path is within the area except start and end points
 
-    rindex = 1 + int64(floor(abs(randn(rng)) * rindex_noise / 2))
+    rindex = 1 + round(Int64, floor(abs(randn(rng)) * rindex_noise / 2))
 
     if rindex == 1
         rn = 0.
@@ -319,8 +319,8 @@ function getClosestPoint(sc::Scenario, sc_state::ScenarioState, uav_number::Int6
 
     t = 0
 
-    while !isEndState(sc, sc_state)
-        updateState(sc, sc_state, t)
+    while !Scenario_.isEndState(sc, sc_state)
+        Scenario_.updateState(sc, sc_state, t)
 
         state = sc_state.UAVStates[uav_number]
         state_ = sc_state.UAVStates[1]
@@ -354,8 +354,8 @@ function check_sa_violation(sc::Scenario, sc_state::ScenarioState; draw::Bool = 
 
     t = 0
 
-    while !isEndState(sc, sc_state)
-        updateState(sc, sc_state, t)
+    while !Scenario_.isEndState(sc, sc_state)
+        Scenario_.updateState(sc, sc_state, t)
 
         state = sc_state.UAVStates[sc.nUAV]
 
@@ -445,13 +445,13 @@ function generateScenario_(seed::Int64)
             curr_loc, heading = getInitLocation(rng, params, route, rindex_noise)
 
             if i == 1
-                push!(UAVInfo, {"uav_info" => uav_info, "uav_state" => {"heading" => heading, "curr_loc" => curr_loc}})
+                push!(UAVInfo, Dict{ASCIIString, Any}("uav_info" => uav_info, "uav_state" => Dict{ASCIIString, Any}("heading" => heading, "curr_loc" => curr_loc)))
                 break
 
             else
                 UAVInfo_ = copy(UAVInfo)
 
-                push!(UAVInfo_, {"uav_info" => uav_info, "uav_state" => {"heading" => heading, "curr_loc" => curr_loc}})
+                push!(UAVInfo_, Dict{ASCIIString, Any}("uav_info" => uav_info, "uav_state" => Dict{ASCIIString, Any}("heading" => heading, "curr_loc" => curr_loc)))
 
                 sc, sc_state = generateScenarioWithParams(params, UAVInfo_; v_def = 40., v_min = 20., v_max = 60.)
 
@@ -512,7 +512,7 @@ function generateScenario_(seed::Int64)
 end
 
 
-function generateScenario(scenario_number::Union(Int64, Vector{Int64}, Nothing) = nothing; draw::Bool = false, wait::Bool = false, bSave::Bool = false, bAppend::Bool = true, navigation::Symbol = :GPS_INS, Scenarios = nothing)
+function generateScenario(scenario_number::Union{Int64, Vector{Int64}, Void} = nothing; draw::Bool = false, wait::Bool = false, bSave::Bool = false, bAppend::Bool = true, navigation::Symbol = :GPS_INS, Scenarios = nothing)
 
     if Scenarios == nothing
         if isfile("Scenarios.jld")
@@ -557,8 +557,8 @@ function generateScenario(scenario_number::Union(Int64, Vector{Int64}, Nothing) 
 
             t = 0
 
-            while !isEndState(sc, sc_state)
-                updateState(sc, sc_state, t)
+            while !Scenario_.isEndState(sc, sc_state)
+                Scenario_.updateState(sc, sc_state, t)
 
                 push!(UAVStates, deepcopy(sc_state.UAVStates))
 
@@ -576,7 +576,7 @@ function generateScenario(scenario_number::Union(Int64, Vector{Int64}, Nothing) 
                 close(vis.fig)
             end
 
-            Scenarios[sn] = {"UAVInfo" => UAVInfo, "UAVStates" => UAVStates, "params" => params}
+            Scenarios[sn] = Dict{ASCIIString, Any}("UAVInfo" => UAVInfo, "UAVStates" => UAVStates, "params" => params)
 
             bNewScenario = true
 
@@ -614,7 +614,7 @@ function loadScenarios()
 end
 
 
-function simulateScenario(scenario_number::Union(Int64, Vector{Int64}, Nothing) = nothing; draw::Bool = true, wait::Bool = false, bSim::Bool = false, navigation::Symbol = :GPS_INS, Scenarios = nothing)
+function simulateScenario(scenario_number::Union{Int64, Vector{Int64}, Void} = nothing; draw::Bool = true, wait::Bool = false, bSim::Bool = false, navigation::Symbol = :GPS_INS, Scenarios = nothing)
 
     if scenario_number == nothing
         scenario_number = rand(1025:typemax(Int16))
@@ -639,8 +639,8 @@ function simulateScenario(scenario_number::Union(Int64, Vector{Int64}, Nothing) 
         if bSim
             t = 0
 
-            while !isEndState(sc, sc_state)
-                updateState(sc, sc_state, t)
+            while !Scenario_.isEndState(sc, sc_state)
+                Scenario_.updateState(sc, sc_state, t)
 
                 if draw
                     visInit(vis, sc, sc_state)

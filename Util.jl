@@ -1,3 +1,6 @@
+# Author: Youngjun Kim, youngjun@stanford.edu
+# Date: 08/04/2015
+
 module Util
 
 export argmax, sampleFromProb, neat, randi
@@ -52,9 +55,9 @@ function randi(rng::AbstractRNG, range::UnitRange{Int64})
 
     rn = rand(rng)
 
-    range_ = [range]
+    range_ = collect(range)
 
-    boundary = [0:1/length(range_):1][2:end]
+    boundary = collect(0:1/length(range_):1)[2:end]
 
     v = nothing
 

@@ -1,6 +1,8 @@
 # Author: Youngjun Kim, youngjun@stanford.edu
 # Date: 03/09/2015
 
+push!(LOAD_PATH, ".")
+
 using UAV_
 using Scenario_
 using UTMVisualizer_
@@ -100,18 +102,18 @@ end
 function generateUAVs(model::ASCIIString)
 
     if model == "v0.1"
-        UAVs = {{"route" => {[100., 2500.], [2000., 2000.], [3600., 3000.], [5500., 3000.]}, "v" => 40},
-                {"route" => {[3200., 100.], [4400., 1800.], [3800., 3900.], [4400., 5500.]}, "v" => 23},
-                {"route" => {[4900., 2200.], [1600., 1200.], [-500., 900.]}, "v" => 25},
-                {"route" => {[4000., 4900.], [2000., 3000.], [1500., -500.]}, "v" => 50},
-                {"route" => {[400., 4900.], [2700., 4200.], [5500., 4000.]}, "v" => 40}}
+        UAVs = Any[Dict{ASCIIString, Any}("uav_info" => Dict{ASCIIString, Any}("route" => Vector{Float64}[[100., 2500.], [2000., 2000.], [3600., 3000.], [5500., 3000.]], "v" => 40)),
+                Dict{ASCIIString, Any}("uav_info" => Dict{ASCIIString, Any}("route" => Vector{Float64}[[3200., 100.], [4400., 1800.], [3800., 3900.], [4400., 5500.]], "v" => 23)),
+                Dict{ASCIIString, Any}("uav_info" => Dict{ASCIIString, Any}("route" => Vector{Float64}[[4900., 2200.], [1600., 1200.], [-500., 900.]], "v" => 25)),
+                Dict{ASCIIString, Any}("uav_info" => Dict{ASCIIString, Any}("route" => Vector{Float64}[[4000., 4900.], [2000., 3000.], [1500., -500.]], "v" => 50)),
+                Dict{ASCIIString, Any}("uav_info" => Dict{ASCIIString, Any}("route" => Vector{Float64}[[400., 4900.], [2700., 4200.], [5500., 4000.]], "v" => 40))]
     end
 
     return generateUAVList(UAVs)
 end
 
 
-function generateScenario(model::ASCIIString; uav_indexes::Union(Int64, Vector{Int64}, Nothing) = nothing, navigations::Union(Symbol, Vector{Symbol}, Nothing) = nothing)
+function generateScenario(model::ASCIIString; uav_indexes::Union{Int64, Vector{Int64}, Void} = nothing, navigations::Union{Symbol, Vector{Symbol}, Void} = nothing)
 
     params = generateParameters(model)
 
@@ -144,7 +146,7 @@ function generateScenario(model::ASCIIString; uav_indexes::Union(Int64, Vector{I
 end
 
 
-function simulate(sc::Scenario, sc_state::ScenarioState; draw::Bool = false, wait::Bool = false, uav_indexes::Union(Int64, Vector{Int64}, Nothing) = nothing, headings::Union(Symbol, Vector{Symbol}, Nothing) = nothing)
+function simulate(sc::Scenario, sc_state::ScenarioState; draw::Bool = false, wait::Bool = false, uav_indexes::Union{Int64, Vector{Int64}, Void} = nothing, headings::Union{Symbol, Vector{Symbol}, Void} = nothing)
 
     if uav_indexes != nothing
         for uav_index = uav_indexes
@@ -214,7 +216,7 @@ end
 
 
 if false
-    srand(uint(time()))
+    srand(round(Int64, time()))
 
     sc, sc_state = generateScenario("v0.1")
 
@@ -223,7 +225,7 @@ end
 
 
 if false
-    srand(uint(time()))
+    srand(round(Int64, time()))
 
     sc, sc_state = generateScenario("v0.1", uav_indexes = 1, navigations = :nav1)
 
@@ -232,7 +234,7 @@ end
 
 
 if false
-    srand(uint(time()))
+    srand(round(Int64, time()))
 
     N = 1000
     RE_threshold = 0.01

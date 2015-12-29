@@ -17,10 +17,10 @@ type UAV
 
     index::Int64
 
-    start_loc::Union(Vector{Float64}, Nothing)
-    end_loc::Union(Vector{Float64}, Nothing)
+    start_loc::Union{Vector{Float64}, Void}
+    end_loc::Union{Vector{Float64}, Void}
 
-    waypoints::Union(Vector{Vector{Float64}}, Nothing)
+    waypoints::Union{Vector{Vector{Float64}}, Void}
     nwaypoint::Int64
 
     velocity::Float64
@@ -66,12 +66,12 @@ function convertHeading(uav::UAV, heading::Symbol)
 
     if contains(s, "Waypoint")
         htype = :waypoint
-        hindex = int64(s[9:end])
+        hindex = parse(Int64, s[9:end])
         @assert hindex < uav.nwaypoint + 1
 
     elseif contains(s, "Base")
         htype = :base
-        hindex = int64(s[5:end])
+        hindex = parse(Int64, s[5:end])
         @assert hindex < length(uav.sc.landing_bases) + 1
 
     elseif contains(s, "End")

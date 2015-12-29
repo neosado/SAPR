@@ -12,22 +12,22 @@ using UAV_
 
 type ScenarioParams
 
-    seed::Union(Int64, Nothing)
+    seed::Union{Int64, Void}
 
     x::Float64
     y::Float64
 
     dt::Int64
 
-    cell_towers::Union(Vector{Vector{Float64}}, Nothing)
+    cell_towers::Union{Vector{Vector{Float64}}, Void}
 
-    landing_bases::Union(Vector{Vector{Float64}}, Nothing)
+    landing_bases::Union{Vector{Vector{Float64}}, Void}
 
     jamming_time::Float64
     jamming_center::Vector{Float64}
     jamming_radius::Float64
 
-    UAVs::Union(Vector{UAV}, Nothing)
+    UAVs::Union{Vector{UAV}, Void}
     nUAV::Int64
 
     sa_dist::Float64
@@ -81,22 +81,22 @@ end
 
 type Scenario
 
-    seed::Union(Int64, Nothing)
+    seed::Union{Int64, Void}
 
     x::Float64
     y::Float64
 
     dt::Int64
 
-    cell_towers::Union(Vector{Vector{Float64}}, Nothing)
+    cell_towers::Union{Vector{Vector{Float64}}, Void}
 
-    landing_bases::Union(Vector{Vector{Float64}}, Nothing)
+    landing_bases::Union{Vector{Vector{Float64}}, Void}
 
     jamming_time::Float64
     jamming_center::Vector{Float64}
     jamming_radius::Float64
 
-    UAVs::Union(Vector{UAV}, Nothing)
+    UAVs::Union{Vector{UAV}, Void}
     nUAV::Int64
 
     sa_dist::Float64
@@ -194,7 +194,7 @@ function updateState(sc::Scenario, sc_state::ScenarioState, t::Int64)
 end
 
 
-function isEndState(sc::Scenario, sc_state::ScenarioState; uav_indexes::Union(Int64, Vector{Int64}, Nothing) = nothing)
+function isEndState(sc::Scenario, sc_state::ScenarioState; uav_indexes::Union{Int64, Vector{Int64}, Void} = nothing)
 
     end_flag = true
 

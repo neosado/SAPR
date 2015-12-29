@@ -4,7 +4,7 @@
 # Partially Observable Markov Decision Process
 module POMDP_
 
-import Base.isequal, Base.hash
+import Base: isequal, ==, hash
 
 export POMDP, State, Action, Observation, Belief, History
 export reward, observe, nextState, Generative, isEnd, isFeasible, sampleBelief, updateBelief
@@ -35,7 +35,7 @@ type History
     history::Vector{Any}
 
 
-    function History(history = {})
+    function History(history = [])
 
         self = new()
         self.history = history
@@ -62,7 +62,7 @@ function ==(h1::History, h2::History)
     end
 end
 
-function hash(hist::History, h::Uint64 = zero(Uint64))
+function hash(hist::History, h::UInt64 = zero(UInt64))
 
     h = hash(nothing, h)
 
