@@ -7,7 +7,7 @@ export UTMVisualizer, visInit, visUpdate, updateAnimation, saveAnimation
 
 
 using Visualizer_
-using Scenario_
+using UTMScenario_
 
 using PyCall
 using PyPlot
@@ -55,7 +55,7 @@ type UTMVisualizer <: Visualizer
 end
 
 
-function visInit(vis::UTMVisualizer, sc::Scenario, sc_state::ScenarioState)
+function visInit(vis::UTMVisualizer, sc::UTMScenario, sc_state::UTMScenarioState)
 
     if vis.fig == nothing
         fig = figure(facecolor = "white")
@@ -129,7 +129,7 @@ function visInit(vis::UTMVisualizer, sc::Scenario, sc_state::ScenarioState)
 end
 
 
-function visUpdate(vis::UTMVisualizer, sc::Scenario, sc_state::ScenarioState)
+function visUpdate(vis::UTMVisualizer, sc::UTMScenario, sc_state::UTMScenarioState)
 
     fig = vis.fig
     ax1 = vis.ax1
@@ -165,7 +165,7 @@ function visUpdate(vis::UTMVisualizer, sc::Scenario, sc_state::ScenarioState)
 end
 
 
-function visUpdate(vis::UTMVisualizer, sc::Scenario, sc_state::ScenarioState, timestep::Int64; sim::Union{Tuple{ASCIIString, Union{Vector{Float64}, Void}, Union{Int64, Float64}, Union{Int64, Float64}}, Void} = nothing)
+function visUpdate(vis::UTMVisualizer, sc::UTMScenario, sc_state::UTMScenarioState, timestep::Int64; sim::Union{Tuple{ASCIIString, Union{Vector{Float64}, Void}, Union{Int64, Float64}, Union{Int64, Float64}}, Void} = nothing)
 
     fig = vis.fig
     ax1 = vis.ax1

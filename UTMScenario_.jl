@@ -1,16 +1,16 @@
 # Author: Youngjun Kim, youngjun@stanford.edu
 # Date: 03/09/2015
 
-module Scenario_
+module UTMScenario_
 
-export Scenario, ScenarioParams, ScenarioState
+export UTMScenario, UTMScenarioParams, UTMScenarioState
 export updateState, isEndState
 
 
 using UAV_
 
 
-type ScenarioParams
+type UTMScenarioParams
 
     seed::Union{Int64, Void}
 
@@ -42,7 +42,7 @@ type ScenarioParams
     bMCTS::Bool
 
 
-    function ScenarioParams()
+    function UTMScenarioParams()
 
         self = new()
 
@@ -79,7 +79,7 @@ type ScenarioParams
 end
 
 
-type Scenario
+type UTMScenario
 
     seed::Union{Int64, Void}
 
@@ -111,7 +111,7 @@ type Scenario
     bMCTS::Bool
 
 
-    function Scenario(params::ScenarioParams)
+    function UTMScenario(params::UTMScenarioParams)
 
         self = new()
 
@@ -165,12 +165,12 @@ type Scenario
 end
 
 
-type ScenarioState
+type UTMScenarioState
 
     UAVStates::Vector{UAVState}
 
 
-    function ScenarioState(sc::Scenario)
+    function UTMScenarioState(sc::UTMScenario)
 
         self = new()
         self.UAVStates = UAVState[]
@@ -184,7 +184,7 @@ type ScenarioState
 end
 
 
-function updateState(sc::Scenario, sc_state::ScenarioState, t::Int64)
+function updateState(sc::UTMScenario, sc_state::UTMScenarioState, t::Int64)
 
     if t > 0
         for i = 1:sc.nUAV
@@ -194,7 +194,7 @@ function updateState(sc::Scenario, sc_state::ScenarioState, t::Int64)
 end
 
 
-function isEndState(sc::Scenario, sc_state::ScenarioState; uav_indexes::Union{Int64, Vector{Int64}, Void} = nothing)
+function isEndState(sc::UTMScenario, sc_state::UTMScenarioState; uav_indexes::Union{Int64, Vector{Int64}, Void} = nothing)
 
     end_flag = true
 

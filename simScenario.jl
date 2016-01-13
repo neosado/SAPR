@@ -4,13 +4,13 @@
 push!(LOAD_PATH, ".")
 
 using UAV_
-using Scenario_
+using UTMScenario_
 using UTMVisualizer_
 
 
 function generateParameters(model::ASCIIString)
 
-    params = ScenarioParams()
+    params = UTMScenarioParams()
 
     if model == "v0.1"
         params.x = 5000.    # ft
@@ -138,15 +138,15 @@ function generateScenario(model::ASCIIString; uav_indexes::Union{Int64, Vector{I
         push!(params.UAVs, uav)
     end
 
-    sc = Scenario(params)
+    sc = UTMScenario(params)
 
-    sc_state = ScenarioState(sc)
+    sc_state = UTMScenarioState(sc)
 
     return sc, sc_state
 end
 
 
-function simulate(sc::Scenario, sc_state::ScenarioState; draw::Bool = false, wait::Bool = false, uav_indexes::Union{Int64, Vector{Int64}, Void} = nothing, headings::Union{Symbol, Vector{Symbol}, Void} = nothing)
+function simulate(sc::UTMScenario, sc_state::UTMScenarioState; draw::Bool = false, wait::Bool = false, uav_indexes::Union{Int64, Vector{Int64}, Void} = nothing, headings::Union{Symbol, Vector{Symbol}, Void} = nothing)
 
     if uav_indexes != nothing
         for uav_index = uav_indexes

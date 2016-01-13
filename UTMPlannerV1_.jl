@@ -19,7 +19,7 @@ using Iterators
 using Distributions
 
 using UAV_
-using Scenario_
+using UTMScenario_
 using UTMScenarioGenerator_
 
 
@@ -86,8 +86,8 @@ type UTMPlannerV1 <: POMDP
 
     seed::Union{Int64, Void}
 
-    sc::Scenario
-    sc_state::ScenarioState
+    sc::UTMScenario
+    sc_state::UTMScenarioState
 
     dt::Int64           # seconds
 

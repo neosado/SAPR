@@ -4,7 +4,7 @@
 push!(LOAD_PATH, ".")
 
 using UTMPlannerV1_
-using Scenario_
+using UTMScenario_
 using UTMScenarioGenerator_
 
 using POMCP_
@@ -124,7 +124,7 @@ function test(pm, alg)
 end
 
 
-function simulate(sc::Scenario, sc_state::ScenarioState; draw::Bool = false, wait::Bool = false)
+function simulate(sc::UTMScenario, sc_state::UTMScenarioState; draw::Bool = false, wait::Bool = false)
 
     if draw
         vis = UTMVisualizer(wait = wait)

@@ -7,14 +7,14 @@ export generateScenario, loadScenarios, simulateScenario
 
 
 using UAV_
-using Scenario_
+using UTMScenario_
 using UTMVisualizer_
 using Util
 
 using JLD
 
 
-function generateScenarioWithParams(params::ScenarioParams, UAVInfo; navigation::Symbol = :GPS_INS, v_def::Float64 = 0., v_min::Float64 = 0., v_max::Float64 = 0.)
+function generateScenarioWithParams(params::UTMScenarioParams, UAVInfo; navigation::Symbol = :GPS_INS, v_def::Float64 = 0., v_min::Float64 = 0., v_max::Float64 = 0.)
 
     UAVList = UAV[]
 
@@ -69,9 +69,9 @@ function generateScenarioWithParams(params::ScenarioParams, UAVInfo; navigation:
         push!(params.UAVs, UAVList[i])
     end
 
-    sc = Scenario(params)
+    sc = UTMScenario(params)
 
-    sc_state = ScenarioState(sc)
+    sc_state = UTMScenarioState(sc)
 
     for i = 1:sc.nUAV
         if haskey(UAVInfo[i], "uav_state")
@@ -102,7 +102,7 @@ end
 function scenario_1()
 
     # parameters
-    params = ScenarioParams()
+    params = UTMScenarioParams()
 
     params.x = 5010.    # ft
     params.y = 5010.    # ft
@@ -276,7 +276,7 @@ function generateUAV(rng::AbstractRNG; x::Float64 = 0., y::Float64 = 0., margin:
 end
 
 
-function getInitLocation(rng::AbstractRNG, params::ScenarioParams, route::Vector{Vector{Float64}}, rindex_noise::Int64)
+function getInitLocation(rng::AbstractRNG, params::UTMScenarioParams, route::Vector{Vector{Float64}}, rindex_noise::Int64)
 
     # assume that whole planned path is within the area except start and end points
 
@@ -311,7 +311,7 @@ function getInitLocation(rng::AbstractRNG, params::ScenarioParams, route::Vector
 end
 
 
-function getClosestPoint(sc::Scenario, sc_state::ScenarioState, uav_number::Int64)
+function getClosestPoint(sc::UTMScenario, sc_state::UTMScenarioState, uav_number::Int64)
 
     min_dist = Inf
     loc = nothing
@@ -319,8 +319,8 @@ function getClosestPoint(sc::Scenario, sc_state::ScenarioState, uav_number::Int6
 
     t = 0
 
-    while !Scenario_.isEndState(sc, sc_state)
-        Scenario_.updateState(sc, sc_state, t)
+    while !UTMScenario_.isEndState(sc, sc_state)
+        UTMScenario_.updateState(sc, sc_state, t)
 
         state = sc_state.UAVStates[uav_number]
         state_ = sc_state.UAVStates[1]
@@ -340,7 +340,7 @@ function getClosestPoint(sc::Scenario, sc_state::ScenarioState, uav_number::Int6
 end
 
 
-function check_sa_violation(sc::Scenario, sc_state::ScenarioState; draw::Bool = false, wait::Bool = false)
+function check_sa_violation(sc::UTMScenario, sc_state::UTMScenarioState; draw::Bool = false, wait::Bool = false)
 
     bViolation = false
 
@@ -354,8 +354,8 @@ function check_sa_violation(sc::Scenario, sc_state::ScenarioState; draw::Bool = 
 
     t = 0
 
-    while !Scenario_.isEndState(sc, sc_state)
-        Scenario_.updateState(sc, sc_state, t)
+    while !UTMScenario_.isEndState(sc, sc_state)
+        UTMScenario_.updateState(sc, sc_state, t)
 
         state = sc_state.UAVStates[sc.nUAV]
 
@@ -402,7 +402,7 @@ function generateScenario_(seed::Int64)
     rng = MersenneTwister(seed)
 
     # parameters
-    params = ScenarioParams()
+    params = UTMScenarioParams()
 
     params.x = 5010.    # ft
     params.y = 5010.    # ft
@@ -557,8 +557,8 @@ function generateScenario(scenario_number::Union{Int64, Vector{Int64}, Void} = n
 
             t = 0
 
-            while !Scenario_.isEndState(sc, sc_state)
-                Scenario_.updateState(sc, sc_state, t)
+            while !UTMScenario_.isEndState(sc, sc_state)
+                UTMScenario_.updateState(sc, sc_state, t)
 
                 push!(UAVStates, deepcopy(sc_state.UAVStates))
 
@@ -639,8 +639,8 @@ function simulateScenario(scenario_number::Union{Int64, Vector{Int64}, Void} = n
         if bSim
             t = 0
 
-            while !Scenario_.isEndState(sc, sc_state)
-                Scenario_.updateState(sc, sc_state, t)
+            while !UTMScenario_.isEndState(sc, sc_state)
+                UTMScenario_.updateState(sc, sc_state, t)
 
                 if draw
                     visInit(vis, sc, sc_state)
