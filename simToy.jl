@@ -90,7 +90,7 @@ rollout_policy(param::Vector{Float64}) = (pm::Toy, s::TYState) -> rollout_policy
 
 
 if false
-    pm = Toy(seed = int64(time()))
+    pm = Toy(seed = round(Int64, time()))
 
     n = 0
 
@@ -111,7 +111,7 @@ end
 
 
 if false
-    seed = int64(time())
+    seed = round(Int64, time())
 
     p = 0.5
 
@@ -130,7 +130,7 @@ end
 
 function simTest(;N = 1000, RE_threshold = 0.1, p = 0.5, nloop = 100)
 
-    iseed = int64(time())
+    iseed = round(Int64, time())
 
     if iseed != nothing
         println("seed: ", iseed)
@@ -147,7 +147,7 @@ function simTest(;N = 1000, RE_threshold = 0.1, p = 0.5, nloop = 100)
         if iseed != nothing
             pm = Toy()
         else
-            seed = int64(time())
+            seed = round(Int64, time())
             pm = Toy(seed = seed)
         end
 

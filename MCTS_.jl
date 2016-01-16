@@ -4,7 +4,7 @@
 # Monte-Carlo Tree Search
 module MCTS_
 
-export MCTS, selectAction, reinitialize, initialize
+export MCTS, selectAction, initialize, reinitialize
 
 
 using Solver_
@@ -17,8 +17,8 @@ abstract MCTS <: Solver
 
 
 selectAction(alg::MCTS) = error("$(typeof(alg)) does not implement selectAction()")
-reinitialize(alg::MCTS) = error("$(typeof(alg)) does not implement reinitialize()")
 initialize(alg::MCTS) = error("$(typeof(alg)) does not implement initialize()")
+reinitialize(alg::MCTS) = error("$(typeof(alg)) does not implement reinitialize()")
 
 end
 

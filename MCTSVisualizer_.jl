@@ -1,6 +1,9 @@
 # Author: Youngjun Kim, youngjun@stanford.edu
 # Date: 12/11/2014
 
+VERSION >= v"0.4" && __precompile__(false)
+
+
 module MCTSVisualizer_
 
 export MCTSVisualizer, initTree, updateTree, saveTree
@@ -164,7 +167,7 @@ function updateTree(vis::MCTSVisualizer, where::Symbol, args...)
         end
 
     elseif where == :after_sim
-        s, a, r, q, N, Ns, Q = args
+        s, a, r, q, Ns, N, Q = args
 
         st = string(s)
         act = string(a.action)

@@ -102,7 +102,7 @@ end
 function scenario_1()
 
     # parameters
-    params = UTMScenarioParams()
+    params = UTMScenarioParams(1)
 
     params.x = 5010.    # ft
     params.y = 5010.    # ft
@@ -402,7 +402,7 @@ function generateScenario_(seed::Int64)
     rng = MersenneTwister(seed)
 
     # parameters
-    params = UTMScenarioParams()
+    params = UTMScenarioParams(seed)
 
     params.x = 5010.    # ft
     params.y = 5010.    # ft

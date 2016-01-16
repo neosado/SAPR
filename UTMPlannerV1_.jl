@@ -1,29 +1,32 @@
 # Author: Youngjun Kim, youngjun@stanford.edu
 # Date: 08/04/2015
 
+VERSION >= v"0.4" && __precompile__(false)
+
+
 module UTMPlannerV1_
 
-import Base: isequal, ==, hash, copy
+import Base: isequal, ==, hash, copy, string
 import Base: start, done, next
 
 export UTMPlannerV1, UPState, UPAction, UPObservation, UPBelief, UPBeliefVector, UPBeliefParticles, History
 export UPStateIter, UPObservationIter
-export Generative, nextState, observe, reward, isEnd, isFeasible, sampleBelief, updateBelief
+export nextState, observe, reward, Generative, isEnd, isFeasible, sampleBelief, updateBelief
 export tranProb, obsProb
 export coord2grid, grid2coord
 
 
 using POMDP_
-using Base.Test
 using Iterators
 using Distributions
+using Base.Test
 
 using UAV_
 using UTMScenario_
 using UTMScenarioGenerator_
 
 
-import POMDP_: Generative, nextState, observe, reward, isEnd, isFeasible, sampleBelief, updateBelief, tranProb, obsProb
+import POMDP_: nextState, observe, reward, Generative, isEnd, isFeasible, sampleBelief, updateBelief, tranProb, obsProb
 
 
 #
@@ -36,6 +39,10 @@ immutable UPState <: State
     status::Symbol
     heading::Symbol
     t::Int64
+end
+
+function string(s::UPState)
+    return "(" * string(s.location) * "," * string(s.status) * "," * string(s.heading) * "," * string(s.t) * ")"
 end
 
 type UPStateIter
@@ -52,10 +59,20 @@ immutable UPAction <: Action
     action::Symbol
 end
 
+function string(a::UPAction)
+
+    return string(a.action)
+end
+
 
 immutable UPObservation <: Observation
 
     location::Tuple{Int64, Int64}
+end
+
+function string(o::Observation)
+
+    return string(o.location)
 end
 
 type UPObservationIter
@@ -95,10 +112,10 @@ type UTMPlannerV1 <: POMDP
     n::Int64
 
     states::Union{UPStateIter, Void}
-    nState::Int64
+    nStates::Int64
 
     actions::Vector{UPAction}
-    nAction::Int64
+    nActions::Int64
 
     observations::Union{UPObservationIter, Void}
     nObservation::Int64
@@ -115,22 +132,16 @@ type UTMPlannerV1 <: POMDP
 
         self = new()
 
-        if seed != nothing
-            if seed != 0
-                self.seed = seed
-            else
-                self.seed = round(Int64, time())
-            end
-
-            srand(self.seed)
-
+        if seed == nothing
+            self.seed = round(Int64, time())
         else
-            self.seed = nothing
-
+            self.seed = seed
         end
 
+        # Note: can't create rng since Distributions.jl does not support rng argument in its rand()
+        srand(self.seed)
+
         self.sc, self.sc_state, self.UAVStates, _ = generateScenario(scenario_number, navigation = :nav1, Scenarios = Scenarios)
-        self.sc.seed = seed
 
         self.dt = 5
 
@@ -142,14 +153,14 @@ type UTMPlannerV1 <: POMDP
 
         # XXX think about how to handle time in state
         self.states = nothing
-        self.nState = 0
+        self.nStates = 0
 
         if self.sc.UAVs[1].nwaypoint > 2
             self.actions = [UPAction(:None_), UPAction(:Waypoint1), UPAction(:Waypoint2), UPAction(:Waypoint3), UPAction(:Base1), UPAction(:Base2), UPAction(:Base3)]
         else
             self.actions = [UPAction(:None_), UPAction(:Waypoint1), UPAction(:Waypoint2), UPAction(:End), UPAction(:Base1), UPAction(:Base2), UPAction(:Base3)]
         end
-        self.nAction = length(self.actions)
+        self.nActions = length(self.actions)
 
         self.observations = nothing
         self.nObservation = 0

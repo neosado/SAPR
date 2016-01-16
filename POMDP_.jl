@@ -1,21 +1,29 @@
 # Author: Youngjun Kim, youngjun@stanford.edu
 # Date: 11/04/2014
 
+VERSION >= v"0.4" && __precompile__(false)
+
+
 # Partially Observable Markov Decision Process
 module POMDP_
 
 import Base: isequal, ==, hash
 
 export POMDP, State, Action, Observation, Belief, History
-export reward, observe, nextState, Generative, isEnd, isFeasible, sampleBelief, updateBelief
+export nextState, observe, reward, Generative, isEnd, isFeasible, sampleBelief, updateBelief
 export tranProb, obsProb
 
 
 abstract POMDP
+abstract State
+abstract Action
+abstract Observation
+abstract Belief
 
-reward(pm::POMDP) = error("$(typeof(pm)) does not implement reward()")
-observe(pm::POMDP) = error("$(typeof(pm)) does not implement observe()")
+
 nextState(pm::POMDP) = error("$(typeof(pm)) does not implement nextState()")
+observe(pm::POMDP) = error("$(typeof(pm)) does not implement observe()")
+reward(pm::POMDP) = error("$(typeof(pm)) does not implement reward()")
 Generative(pm::POMDP) = error("$(typeof(pm)) does not implement Generative()")
 isEnd(pm::POMDP) = error("$(typeof(pm)) does not implement isEnd()")
 isFeasible(pm::POMDP) = error("$(typeof(pm)) does not implement isFeasible()")
@@ -24,11 +32,6 @@ updateBelief(pm::POMDP) = error("$(typeof(pm)) does not implement updateBelief()
 tranProb(pm::POMDP) = error("$(typeof(pm)) does not implement tranProb()")
 obsProb(pm::POMDP) = error("$(typeof(pm)) does not implement obsProb()")
 
-
-abstract State
-abstract Action
-abstract Observation
-abstract Belief
 
 type History
 
@@ -49,7 +52,7 @@ function isequal(h1::History, h2::History)
     if length(h1.history) != length(h2.history)
         return false
     else
-        return all([isequal(e1, e2) for (e1, e2) in zip(h1.history, h2.history)])
+        return reduce(&, [isequal(e1, e2) for (e1, e2) in zip(h1.history, h2.history)])
     end
 end
 
@@ -58,7 +61,7 @@ function ==(h1::History, h2::History)
     if length(h1.history) != length(h2.history)
         return false
     else
-        return all([e1 == e2 for (e1, e2) in zip(h1.history, h2.history)])
+        return reduce(&, [e1 == e2 for (e1, e2) in zip(h1.history, h2.history)])
     end
 end
 

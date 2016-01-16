@@ -3,24 +3,17 @@
 
 module Toy_
 
-import Base.isequal, Base.hash, Base.copy
+import Base: isequal, hash, copy
 
 export Toy, TYState, TYAction, TYObservation, TYBelief, TYBeliefVector, TYBeliefParticles, History
-export Generative, nextState, observe, reward, isEnd, isFeasible, sampleBelief, updateBelief
+export nextState, observe, reward, Generative, isEnd, isFeasible, sampleBelief, updateBelief
 
 
 using POMDP_
 using Base.Test
 
 
-import POMDP_.Generative
-import POMDP_.nextState
-import POMDP_.observe
-import POMDP_.reward
-import POMDP_.isEnd
-import POMDP_.isFeasible
-import POMDP_.sampleBelief
-import POMDP_.updateBelief
+import POMDP_: nextState, observe, reward, Generative, isEnd, isFeasible, sampleBelief, updateBelief
 
 
 immutable TYState <: State
@@ -54,10 +47,10 @@ type Toy <: POMDP
     seed::Union(Int64, Nothing)
 
     states::Vector{TYState}
-    nState::Int64
+    nStates::Int64
 
     actions::Vector{TYAction}
-    nAction::Int64
+    nActions::Int64
 
     observations::Vector{TYObservation}
     nObservation::Int64
@@ -84,16 +77,16 @@ type Toy <: POMDP
         end
 
         self.states = TYState[]
-        self.nState = 7
-        for i = 1:self.nState
+        self.nStates = 7
+        for i = 1:self.nStates
             push!(self.states, TYState(symbol("S$i")))
         end
 
         self.actions = [TYAction(:Left), TYAction(:Right)]
-        self.nAction = length(self.actions)
+        self.nActions = length(self.actions)
 
         self.observations = TYObservation[]
-        self.nObservation = self.nState
+        self.nObservation = self.nStates
         for i = 1:self.nObservation
             push!(self.observations, TYObservation(symbol("S$i")))
         end
