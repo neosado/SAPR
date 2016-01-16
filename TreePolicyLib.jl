@@ -129,9 +129,9 @@ function selectAction(policy::TSPolicy, pm::POMDP; feasible_actions::Union{Dict{
 
     for i = 1:pm.nActions
         if feasible_actions != nothing && !feasible_actions[pm.actions[i]]
-            theta[i] = rand(Beta(policy.S[pm.actions[i]] + 1, policy.F[pm.actions[i]] + 1))
-        else
             theta[i] = -Inf
+        else
+            theta[i] = rand(Beta(policy.S[pm.actions[i]] + 1, policy.F[pm.actions[i]] + 1))
         end
     end
 
@@ -187,9 +187,9 @@ function selectAction(policy::TSMPolicy, pm::POMDP; feasible_actions::Union{Dict
 
     for i = 1:pm.nActions
         if feasible_actions != nothing && !feasible_actions[pm.actions[i]]
-            theta[i] = sampleFromArmRewardModel(policy.ARM[pm.actions[i]])
-        else
             theta[i] = -Inf
+        else
+            theta[i] = sampleFromArmRewardModel(policy.ARM[pm.actions[i]])
         end
     end
 

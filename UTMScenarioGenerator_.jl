@@ -1,6 +1,9 @@
 # Author: Youngjun Kim, youngjun@stanford.edu
 # Date: 08/26/2015
 
+VERSION >= v"0.4" && __precompile__(false)
+
+
 module UTMScenarioGenerator_
 
 export generateScenario, loadScenarios, simulateScenario

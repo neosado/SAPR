@@ -124,7 +124,9 @@ type UTMPlannerV1 <: POMDP
 
     UAVStates::Any
 
-    reward_functype::Symbol
+    reward_min::Int64
+    reward_max::Int64
+
     reward_norm_const::Float64
 
 
@@ -173,8 +175,10 @@ type UTMPlannerV1 <: POMDP
             end
         end
 
-        self.reward_functype = :type2
-        self.reward_norm_const = 1000.
+        self.reward_min = -10000
+        self.reward_max = 0
+
+        self.reward_norm_const = 1.
 
         return self
     end
@@ -292,6 +296,8 @@ function Generative(up::UTMPlannerV1, s::UPState, a::UPAction)
         updateHeading(uav, uav_state, a.action)
     end
 
+    bMAC = false
+
     for i = 1:up.dt
         if uav_state.status == :flying
             for k = 2:up.sc.nUAV
@@ -299,7 +305,7 @@ function Generative(up::UTMPlannerV1, s::UPState, a::UPAction)
 
                 if  state__.status == :flying
                     if norm(state__.curr_loc - uav_state.curr_loc) < up.sc.sa_dist
-                        r += -1000
+                        bMAC = true
                     end
                 end
             end
@@ -314,6 +320,10 @@ function Generative(up::UTMPlannerV1, s::UPState, a::UPAction)
         end
 
         restoreUAVStates(up, t)
+    end
+
+    if bMAC
+        r += -10000
     end
 
     s_ = UPState(coord2grid(up, uav_state.curr_loc), uav_state.status, uav_state.heading, t)
@@ -415,7 +425,7 @@ function reward(up::UTMPlannerV1, s::UPState, a::UPAction)
 
             if  state__.status == :flying
                 if norm(state__.curr_loc - uav_state.curr_loc) < up.sc.sa_dist
-                    r += -1000
+                    r += -10000
                 end
             end
         end

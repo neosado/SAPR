@@ -1,6 +1,9 @@
 # Author: Youngjun Kim, youngjun@stanford.edu
 # Date: 04/02/2015
 
+VERSION >= v"0.4" && __precompile__(false)
+
+
 module UAV_
 
 export UAV, UAVState

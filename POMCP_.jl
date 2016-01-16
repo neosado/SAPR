@@ -531,7 +531,7 @@ function simulate(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64; MSState
         s_, o, r = Generative(pm, s, a)
 
         if alg.tree_policy.bSparseUCT
-            if length(alg.Os[(h, a)]) < sp_nObsMax
+            if length(alg.Os[(h, a)]) < alg.tree_policy.sp_nObsMax
                 push!(alg.Os[(h, a)], o)
             else
                 o = alg.Os[(h, a)][randi(alg.rng, 1:length(alg.Os[(h, a)]))]

@@ -1,6 +1,9 @@
 # Author: Youngjun Kim, youngjun@stanford.edu
 # Date: 03/09/2015
 
+VERSION >= v"0.4" && __precompile__(false)
+
+
 module UTMScenario_
 
 export UTMScenario, UTMScenarioParams, UTMScenarioState

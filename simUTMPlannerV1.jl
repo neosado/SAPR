@@ -16,6 +16,7 @@ using ArmRewardModel_
 using Util
 
 using Iterators
+using Distributions
 using Base.Test
 using JLD
 
@@ -585,7 +586,7 @@ function simulate(pm, alg; draw::Bool = false, wait::Bool = false, bSeq::Bool = 
                         push!(actions, a__)
                     end
                 end
-                a = actions[randi(alg.rng, 1:length(actions))]
+                a = actions[rand(1:length(actions))]
             end
 
             if a.action == s.heading
@@ -630,17 +631,10 @@ function simulate(pm, alg; draw::Bool = false, wait::Bool = false, bSeq::Bool = 
 
         s_, o, r = Generative(pm, s, a)
 
-        # XXX is it a right way?
-        #if alg.tree_policy.bSparseUCT
-        #    if !(o in alg.Os[(History(), a)])
-        #        o = alg.Os[(History(), a)][rand(1:length(alg.Os[(History(), a)]))]
-        #    end
-        #end
-
         R += r
 
         if debug > 0
-            if debug > 2
+            if debug > 3
                 for a__ in pm.actions
                     println(string(a__), ": ", alg.N[(History(), a__)])
                 end
@@ -687,43 +681,20 @@ function simulate(pm, alg; draw::Bool = false, wait::Bool = false, bSeq::Bool = 
                 particles = particles_
             end
 
-            # XXX add more particles
             if length(particles) == 0
+                push!(particles, UPState(o.location, s_.status, s_.heading, s_.t))
+            end
+
+            # add particles
+            if length(particles) < alg.nloop_min
                 particles_ = UPState[]
 
-                push!(particles_, UPState(o.location, s_.status, s_.heading, s_.t))
-
-                loc = [o.location...]
-                dist_min = Inf
-
-                for h in keys(alg.B)
-                    if length(h.history) == 2 && h.history[1] == a
-                        loc_ = [h.history[2].location...]
-
-                        if norm(loc_ - loc) < dist_min
-                            dist_min = norm(loc_ - loc)
-                        end
-                    end
+                for i = 1:alg.nloop_min
+                    s__ = particles[rand(1:length(particles))]
+                    push!(particles_, UPState(coord2grid(pm, rand(MvNormal(grid2coord(pm, s__.location), pm.sc.loc_err_sigma))), s__.status, s__.heading, s__.t))
                 end
 
-                if dist_min * pm.cell_len < pm.sc.loc_err_bound
-                    for h in sort(collect(keys(alg.B)), by = string)
-                        if length(h.history) == 2 && h.history[1] == a
-                            loc_ = [h.history[2].location...]
-
-                            if norm(loc_ - loc) == dist_min
-                                o = UPObservation(tuple(loc_...))
-                                append!(particles_, getParticles(alg, a, o))
-                            end
-                        end
-                    end
-                end
-
-                for s__ in particles_
-                    if !isEnd(pm, s__)
-                        push!(particles, s__)
-                    end
-                end
+                append!(particles, particles_)
             end
 
             b = updateBelief(pm, UPBeliefParticles(particles))
@@ -837,30 +808,40 @@ if false
 
     println("seed: ", up_seed, ", ", mcts_seed)
 
-    #scenario_number = nothing
-    scenario_number = 1
+    scenario_number = nothing
+    #scenario_number = 1
+
+    depth = 5
 
     nloop_min = 100
     nloop_max = 10000
     runtime_max = 1.
+
+    sparse = Dict("type" => :SparseUCT, "nObsMax" => 8)
+    pw = Dict("type" => :ProgressiveWidening, "c" => 2, "alpha" => 0.4)
+
+    tree_policy = nothing
+    #tree_policy = Any[sparse, Dict("type" => :UCB1, "c" => 100)]
+    #tree_policy = Any[sparse, Dict("type" => :UCB1_, "c" => 100)]
+    #tree_policy = Any[sparse, Dict("type" => :TS)]
+    #tree_policy = Any[sparse, Dict("type" => :TSM, "ARM" => () -> ArmRewardModel(0.01, 0.01, -100., 1., 1 / 2, 1 / (2 * (1 / 10. ^ 2)), -5000., -10000., 1., 1 / 2,  1 / (2 * (1 / 1.^2))))]
+    #tree_policy = Any[sparse, Dict("type" => :AUCB, "SP" => [Dict("type" => :UCB1, "c" => 100), Dict("type" => :UCB1, "c" => 10000)])]
 
     # :default, :MC, :inf, :once, :CE_worst, :CE_best, :MS
     #rollout = nothing
     rollout = (:once, rollout_once)
     #rollout = (:MS, rollout_MS)
 
-    #tree_policy = nothing
-    tree_policy = Dict("type" => :UCB1, "c" => 100)
-    #tree_policy = Dict("type" => :SparseUCT, "nObsMax" => 8)
-    #tree_policy = Dict("type" => :ProgressiveWidening, "c" => 2, "alpha" => 0.4)
+    debug = 2
+
 
     pm = UTMPlannerV1(seed = up_seed, scenario_number = scenario_number)
 
-    alg = POMCP(seed = mcts_seed, depth = 5, nloop_min = nloop_min, nloop_max = nloop_max, runtime_max = runtime_max, gamma_ = 0.9, tree_policy = tree_policy, rollout = rollout, visualizer = MCTSVisualizer())
+    alg = POMCP(seed = mcts_seed, depth = depth, nloop_min = nloop_min, nloop_max = nloop_max, runtime_max = runtime_max, gamma_ = 0.9, tree_policy = tree_policy, rollout = rollout, visualizer = MCTSVisualizer())
 
     #test(pm, alg)
     #simulate(pm, nothing, draw = true, wait = false, ts = 0, action = :None_)
-    simulate(pm, alg, draw = true, wait = false, bSeq = true, bStat = false, debug = 2)
+    simulate(pm, alg, draw = true, wait = false, bSeq = true, bStat = false, debug = debug)
 end
 
 
@@ -975,6 +956,6 @@ function Experiment02()
         println()
     end
 end
-Experiment02()
+#Experiment02()
 
 
