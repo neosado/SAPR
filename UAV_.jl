@@ -24,7 +24,7 @@ type UAV
     end_loc::Union{Vector{Float64}, Void}
 
     waypoints::Union{Vector{Vector{Float64}}, Void}
-    nwaypoint::Int64
+    nwaypoints::Int64
 
     velocity::Float64
     velocity_min::Float64
@@ -48,7 +48,7 @@ type UAV
         self.end_loc = nothing      # [x:ft, y:ft]
 
         self.waypoints = nothing    # list of [x:ft, y:ft]
-        self.nwaypoint = 0
+        self.nwaypoints = 0
 
         self.velocity = 0.          # ft/s
         self.velocity_min = 0.
@@ -70,7 +70,7 @@ function convertHeading(uav::UAV, heading::Symbol)
     if contains(s, "Waypoint")
         htype = :waypoint
         hindex = parse(Int64, s[9:end])
-        @assert hindex < uav.nwaypoint + 1
+        @assert hindex < uav.nwaypoints + 1
 
     elseif contains(s, "Base")
         htype = :base
@@ -149,7 +149,7 @@ function updateStateGPSINS(uav::UAV, state::UAVState)
         end
 
         if htype == :waypoint
-            if hindex == uav.nwaypoint
+            if hindex == uav.nwaypoints
                 state.heading = :End
             else
                 hindex += 1
@@ -191,7 +191,7 @@ function updateStateNav1(uav::UAV, state::UAVState)
     delta = u * v * uav.sc.dt
 
     if htype == :waypoint
-        if hindex == uav.nwaypoint
+        if hindex == uav.nwaypoints
             next_heading = :End
         else
             hindex += 1

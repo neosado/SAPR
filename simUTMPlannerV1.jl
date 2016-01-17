@@ -20,6 +20,8 @@ using Distributions
 using Base.Test
 using JLD
 
+import UAV_.convertHeading
+
 
 function sampleParticles(pm, b, nsample = 1000)
 
@@ -208,6 +210,35 @@ function rollout_none(alg::POMCP, pm::UTMPlannerV1, s::UPState, h::History, d::I
     s_, o, r = alg.Generative(pm, s, a)
 
     return r + rgamma * rollout_none(alg, pm, s_, History([h.history; a; o]), d - 1, rgamma = rgamma)
+end
+
+
+function rollout_refined(alg::POMCP, pm::UTMPlannerV1, s::UPState, h::History, d::Int64; rgamma::Float64 = 0.9, debug::Int64 = 0)
+
+    if isEnd(pm, s)
+        return 0
+
+    elseif d == 0
+        uav = pm.sc.UAVs[1]
+
+        htype, hindex, hloc = convertHeading(uav, s.heading)
+
+        if htype == :base
+            r = -round(Int64, ceil(norm(pm.sc.landing_bases[hindex] - grid2coord(pm, s.location)) / uav.velocity))
+        elseif htype == :waypoint
+            r = (uav.nwaypoints - hindex + 1) * 100 + 100
+        elseif htype == :end_
+            r = 100
+        end
+
+        return r
+    end
+
+    a = pm.actions[1]
+
+    s_, o, r = alg.Generative(pm, s, a)
+
+    return r + rgamma * rollout_refined(alg, pm, s_, History([h.history; a; o]), d - 1, rgamma = rgamma)
 end
 
 
@@ -556,26 +587,24 @@ function simulate(pm, alg; draw::Bool = false, wait::Bool = false, bSeq::Bool = 
             #println("B: ", alg.B)
             #println()
 
-            if !isFeasible(pm, s, a)
-                Q_max = -Inf
-                for a__ in pm.actions
-                    if !isFeasible(pm, s, a__)
-                        Q[a__] = -Inf
-                    end
-
-                    if Q[a__] > Q_max
-                        Q_max = Q[a__]
-                    end
+            Q_max = -Inf
+            for a__ in pm.actions
+                if !isFeasible(pm, s, a__)
+                    Q[a__] = -Inf
                 end
 
-                actions = UPAction[]
-                for a__ in pm.actions
-                    if Q[a__] == Q_max
-                        push!(actions, a__)
-                    end
+                if Q[a__] > Q_max
+                    Q_max = Q[a__]
                 end
-                a = actions[rand(1:length(actions))]
             end
+
+            actions = UPAction[]
+            for a__ in pm.actions
+                if Q[a__] == Q_max
+                    push!(actions, a__)
+                end
+            end
+            a = actions[rand(1:length(actions))]
 
             if a.action == s.heading
                 a = UPAction(:None_)
@@ -615,7 +644,7 @@ function simulate(pm, alg; draw::Bool = false, wait::Bool = false, bSeq::Bool = 
 
         #s_ = nextState(pm, s, a)
         #o = observe(pm, s_, a)
-        #r = reward(pm, s, a)
+        #r = reward(pm, s, a, s_)
 
         s_, o, r = Generative(pm, s, a)
 
@@ -635,7 +664,7 @@ function simulate(pm, alg; draw::Bool = false, wait::Bool = false, bSeq::Bool = 
                 end
             end
 
-            println("ts: ", s.t, ", s: ", grid2coord(pm, s.location), " ", s.status, ", Q: ", neat(Q__), ", a: ", string(a), ", o: ", grid2coord(pm, o.location), ", r: ", neat(r), ", R: ", neat(R), ", s_: ", grid2coord(pm, s_.location), " ", s_.status)
+            println("ts: ", s.t, ", s: ", grid2coord(pm, s.location), " ", s.status, " ", s.heading, ", Q: ", neat(Q__), ", a: ", string(a), ", o: ", grid2coord(pm, o.location), ", r: ", neat(r), ", R: ", neat(R), ", s_: ", grid2coord(pm, s_.location), " ", s_.status, " ", s_.heading)
         end
 
         if draw
@@ -777,7 +806,7 @@ function runExp(scenario::Int64, up_seed::Union{Int64, Vector{Int64}}, mcts_seed
     if bMS
         rollout = (:MS, rollout_MS)
     else
-        rollout = (:none, rollout_none)
+        rollout = (:refined, rollout_refined)
     end
 
     returns = zeros(N)
@@ -902,10 +931,10 @@ function runExpBatch(; bParallel::Bool = false, bAppend::Bool = false)
 
     tree_policies = Any[
         Any[sparse, Dict("type" => :UCB1, "c" => 100)],
-        Any[sparse, Dict("type" => :UCB1, "c" => 10000)],
+        Any[sparse, Dict("type" => :UCB1, "c" => 1000)],
         Any[sparse, Dict("type" => :TS)],
-        Any[sparse, Dict("type" => :TSM, "ARM" => () -> ArmRewardModel(0.01, 0.01, -100., 1., 1 / 2, 1 / (2 * (1 / 10. ^ 2)), -5000., -10000., 1., 1 / 2,  1 / (2 * (1 / 1.^2))))],
-        Any[sparse, Dict("type" => :AUCB, "SP" => [Dict("type" => :UCB1, "c" => 100), Dict("type" => :UCB1, "c" => 10000)])]
+        Any[sparse, Dict("type" => :TSM, "ARM" => () -> ArmRewardModel(0.01, 0.01, -100., 1., 1 / 2, 1 / (2 * (1 / 10. ^ 2)), -500., -1000., 1., 1 / 2,  1 / (2 * (1 / 1.^2))))],
+        Any[sparse, Dict("type" => :AUCB, "SP" => [Dict("type" => :UCB1, "c" => 100), Dict("type" => :UCB1, "c" => 1000)])]
     ]
 
     depth = 5
@@ -965,23 +994,23 @@ if false
     depth = 5
 
     nloop_min = 100
-    nloop_max = 10000
-    runtime_max = 1.
+    nloop_max = 1000
+    runtime_max = 0.
 
     sparse = Dict("type" => :SparseUCT, "nObsMax" => 8)
     pw = Dict("type" => :ProgressiveWidening, "c" => 2, "alpha" => 0.4)
 
-    tree_policy = nothing
-    #tree_policy = Any[sparse, Dict("type" => :UCB1, "c" => 100)]
+    #tree_policy = nothing
+    tree_policy = Any[sparse, Dict("type" => :UCB1, "c" => 100)]
     #tree_policy = Any[sparse, Dict("type" => :UCB1_, "c" => 100)]
     #tree_policy = Any[sparse, Dict("type" => :TS)]
-    #tree_policy = Any[sparse, Dict("type" => :TSM, "ARM" => () -> ArmRewardModel(0.01, 0.01, -100., 1., 1 / 2, 1 / (2 * (1 / 10. ^ 2)), -5000., -10000., 1., 1 / 2,  1 / (2 * (1 / 1.^2))))]
-    #tree_policy = Any[sparse, Dict("type" => :AUCB, "SP" => [Dict("type" => :UCB1, "c" => 100), Dict("type" => :UCB1, "c" => 10000)])]
+    #tree_policy = Any[sparse, Dict("type" => :TSM, "ARM" => () -> ArmRewardModel(0.01, 0.01, -100., 1., 1 / 2, 1 / (2 * (1 / 10. ^ 2)), -500., -1000., 1., 1 / 2,  1 / (2 * (1 / 1.^2))))]
+    #tree_policy = Any[sparse, Dict("type" => :AUCB, "SP" => [Dict("type" => :UCB1, "c" => 100), Dict("type" => :UCB1, "c" => 1000)])]
     #tree_policy = Any[sparse, Dict("type" => :UCB1, "c" => 100), Dict("type" => :MS, "L" => [1500.], "N" => [4])]
 
     # :default, :MC, :inf, :once, :CE_worst, :CE_best, :MS
     #rollout = nothing
-    rollout = (:none, rollout_none)
+    rollout = (:refined, rollout_refined)
     #rollout = (:MS, rollout_MS)
 
     debug = 2
@@ -1055,7 +1084,7 @@ function Experiment02()
     runtime_max = 1.
 
     #rollout = nothing
-    rollout = (:none, rollout_none)
+    rollout = (:refined, rollout_refined)
     #rollout = (:MS, rollout_MS)
 
     debug = 0

@@ -34,7 +34,7 @@ function generateScenarioWithParams(params::UTMScenarioParams, UAVInfo; navigati
 
         if length(route) > 2
             uav.waypoints = Vector{Float64}[]
-            uav.nwaypoint = length(route) - 2
+            uav.nwaypoints = length(route) - 2
 
             for j = 2:length(route)-1
                 push!(uav.waypoints, route[j])
@@ -90,7 +90,7 @@ function generateScenarioWithParams(params::UTMScenarioParams, UAVInfo; navigati
             end
             push!(sc_state.UAVStates[i].past_locs, curr_loc)
 
-            if heading == sc.UAVs[i].nwaypoint + 2
+            if heading == sc.UAVs[i].nwaypoints + 2
                 sc_state.UAVStates[i].heading = symbol("End")
             else
                 sc_state.UAVStates[i].heading = symbol("Waypoint" * string(heading - 1))
@@ -429,9 +429,12 @@ function generateScenario_(seed::Int64)
     nUAV = 5
     min_route_points = 4
     rindex_noise = 2
-    nNearbyUAV = 2
-    sep_dist_margin = 20.
-    sep_dist_margin_noise = 5.
+    #nNearbyUAV = 2
+    #sep_dist_margin = 20.
+    #sep_dist_margin_noise = 5.
+    nNearbyUAV = 1
+    sep_dist_margin = 700.
+    sep_dist_margin_noise = 150.
 
     UAVInfo = Any[]
 
