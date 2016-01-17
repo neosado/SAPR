@@ -58,7 +58,7 @@ type TreePolicyParams
     pw_alpha::Float64
 
 
-    bMSUCT::Bool
+    bMS::Bool
     ms_L::Vector{Float64}
     ms_N::Vector{Int64}
 
@@ -83,7 +83,7 @@ type TreePolicyParams
         self.bSparseUCT = false
         self.bProgressiveWidening = false
 
-        self.bMSUCT = false
+        self.bMS = false
 
         if tree_policies == nothing
             self.bUCB1 = true
@@ -152,8 +152,8 @@ type TreePolicyParams
                     self.pw_c = tree_policy["c"]
                     self.pw_alpha = tree_policy["alpha"]
 
-                elseif tree_policy["type"] == :MSUCT
-                    self.bMSUCT = true
+                elseif tree_policy["type"] == :MS
+                    self.bMS = true
                     self.ms_L = tree_policy["L"]
                     self.ms_N = tree_policy["N"]
 
@@ -312,7 +312,7 @@ end
 
 function simulate(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64; MSState::Union{Dict{ASCIIString,Any}, Void} = nothing, bStat::Bool = false, debug::Int64 = 0)
 
-    if alg.tree_policy.bMSUCT
+    if alg.tree_policy.bMS
         if MSState == nothing
             MSState = Dict{ASCIIString, Any}()
             MSState["level"] = ones(Int64, pm.sc.nUAV)
@@ -492,7 +492,7 @@ function simulate(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64; MSState
 
     n = 1
 
-    if alg.tree_policy.bMSUCT
+    if alg.tree_policy.bMS
         loc = [pm.cell_len / 2 + (s.location[1] - 1) * pm.cell_len, pm.cell_len / 2 + (s.location[2] - 1) * pm.cell_len]
 
         for i = 2:pm.sc.nUAV
@@ -554,7 +554,7 @@ function simulate(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64; MSState
             updateTree(alg.visualizer, :before_sim, s, a, o)
         end
 
-        if alg.tree_policy.bMSUCT
+        if alg.tree_policy.bMS
             q = r + alg.gamma_ * simulate(alg, pm, s_, History([h.history; a; o]), d - 1, MSState = deepcopy(MSState), debug = debug)
             q_ += (q - q_) / k
         else

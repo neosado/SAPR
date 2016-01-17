@@ -53,10 +53,10 @@ end
 
 if bParallel
     init_cluster(parallel)
-    @everywhere include("simUTMPlannerV1.jl")
-else
-    include("simUTMPlannerV1.jl")
 end
+
+push!(LOAD_PATH, ".")
+using simUTMPlannerV1Mod
 
 runExpBatch(bParallel = bParallel, bAppend = bAppend)
 

@@ -494,7 +494,7 @@ function rollout_MS(alg::POMCP, pm::UTMPlannerV1, s::UPState, h::History, d::Int
 end
 
 
-function simulate(pm, alg; draw::Bool = false, wait::Bool = false, bSeq::Bool = false, ts::Int64 = 0, action::Symbol = :None_, bStat::Bool = false, debug::Int64 = 0)
+function simulate(pm, alg; draw::Bool = false, wait::Bool = false, bSeq::Bool = true, ts::Int64 = 0, action::Symbol = :None_, bStat::Bool = false, debug::Int64 = 0)
 
     sc = pm.sc
     sc_state = pm.sc_state
@@ -759,6 +759,169 @@ function evalScenario(scenario_number::Union{Int64, Void} = nothing; N::Int64 = 
 end
 
 
+function runExp(scenario::Int64, up_seed::Union{Int64, Vector{Int64}}, mcts_seed::Union{Int64, Vector{Int64}}, tree_policy::Any, N::Int64; depth::Int64 = 5, nloop_min::Int64 = 100, nloop_max::Int64 = 10000, runtime_max::Float64 = 1., bParallel::Bool = false, id::Any = nothing)
+
+    @assert length(up_seed) == N
+    @assert length(mcts_seed) == N
+
+    bMS = false
+
+    if tree_policy != nothing
+        for stp in tree_policy
+            if stp["type"] == :MS
+                bMS = true
+            end
+        end
+    end
+
+    if bMS
+        rollout = (:MS, rollout_MS)
+    else
+        rollout = (:none, rollout_none)
+    end
+
+    returns = zeros(N)
+
+    for i = 1:N
+        pm = UTMPlannerV1(seed = up_seed[i], scenario_number = scenario)
+
+        alg = POMCP(seed = mcts_seed[i], depth = depth, nloop_min = nloop_min, nloop_max = nloop_max, runtime_max = runtime_max, gamma_ = 0.9, tree_policy = tree_policy, rollout = rollout)
+
+        R = simulate(pm, alg)
+
+        returns[i] = R
+    end
+
+    if N == 1
+        returns = returns[1]
+    end
+
+    if bParallel
+        return id, returns
+    else
+        return returns
+    end
+end
+
+
+function expBatchWorker(scenarios::Union{Int64, Vector{Int64}}, tree_policies, depth::Int64, nloop_min::Int64, nloop_max::Int64, runtime_max::Float64, N::Int64; bParallel::Bool = false, datafile::ASCIIString = "exp.jld", bAppend::Bool = false)
+
+    if !bAppend && isfile(datafile)
+        rm(datafile)
+    end
+
+    for scenario in scenarios
+        println("Scenario: ", scenario)
+
+        srand(scenario)
+
+        up_seed_list = unique(rand(10000:typemax(Int16), round(Int64, N * 1.1)))[1:N]
+        mcts_seed_list = unique(rand(10000:typemax(Int16), round(Int64, N * 1.1)))[1:N]
+
+        R = Dict{Tuple{Int64, ASCIIString}, Dict{ASCIIString, Any}}()
+
+        if bParallel
+            if true
+                for tree_policy in tree_policies
+                    results = pmap(id -> runExp(scenario, up_seed_list[id], mcts_seed_list[id], tree_policy, 1, depth = depth, nloop_min = nloop_min, nloop_max = nloop_max, runtime_max = runtime_max, bParallel = true, id = id), 1:N)
+
+                    returns = zeros(N)
+
+                    for result in results
+                        id = result[1]
+                        returns[id] = result[2]
+                    end
+
+                    R[(scenario, string(tree_policy))] = Dict("up_seed_list" => copy(up_seed_list), "mcts_seed_list" => copy(mcts_seed_list), "N" => N, "depth" => depth, "nloop_min" => nloop_min, "nloop_max" => nloop_max, "runtime_max" => runtime_max, "returns" => returns)
+                end
+
+            else
+                results = pmap(tree_policy -> runExp(scenario, up_seed_list, mcts_seed_list, tree_policy, N, depth = depth, nloop_min = nloop_min, nloop_max = nloop_max, runtime_max = runtime_max, bParallel = true, id = tree_policy), tree_policies)
+
+                for result in results
+                    tree_policy = result[1]
+                    returns = result[2]
+
+                    R[(scenario, string(tree_policy))] = Dict("up_seed_list" => copy(up_seed_list), "mcts_seed_list" => copy(mcts_seed_list), "N" => N, "depth" => depth, "nloop_min" => nloop_min, "nloop_max" => nloop_max, "runtime_max" => runtime_max, "returns" => returns)
+                end
+
+            end
+
+        else
+            for tree_policy in tree_policies
+                returns = runExp(scenario, up_seed_list, mcts_seed_list, tree_policy, N, depth = depth, nloop_min = nloop_min, nloop_max = nloop_max, runtime_max = runtime_max)
+                R[(scenario, string(tree_policy))] = Dict("up_seed_list" => copy(up_seed_list), "mcts_seed_list" => copy(mcts_seed_list), "N" => N, "depth" => depth, "nloop_min" => nloop_min, "nloop_max" => nloop_max, "runtime_max" => runtime_max, "returns" => returns)
+            end
+
+        end
+
+        if isfile(datafile)
+            D = load(datafile)
+
+            Scenarios = D["Scenarios"]
+            TreePolicies = D["TreePolicies"]
+            Results = D["Results"]
+
+            for (key, experiment) in R
+                scenario, tree_policy = key
+
+                if !(scenario in Scenarios)
+                    push!(Scenarios, scenario)
+                    TreePolicies[scenario] = map(string, tree_policies)
+                elseif !(tree_policy in TreePolicies[scenario])
+                    push!(TreePolicies[scenario], tree_policy)
+                end
+
+                Results[(scenario, tree_policy)] = experiment
+            end
+
+        else
+            Scenarios = Int64[scenario]
+
+            TreePolicies = Dict{Int64, Vector{ASCIIString}}()
+            TreePolicies[scenario] = map(string, tree_policies)
+
+            Results = R
+
+        end
+
+        save(datafile, "Scenarios", Scenarios, "TreePolicies", TreePolicies, "Results", Results)
+    end
+end
+
+
+function runExpBatch(; bParallel::Bool = false, bAppend::Bool = false)
+
+    srand(12)
+    nScenarios = 10
+
+    scenarios = unique(rand(10000:typemax(Int16), round(Int64, nScenarios * 1.1)))[1:nScenarios]
+
+    sparse = Dict("type" => :SparseUCT, "nObsMax" => 8)
+    MS = Dict("type" => :MS, "L" => [1500.], "N" => [4])
+
+    tree_policies = Any[
+        Any[sparse, Dict("type" => :UCB1, "c" => 100)],
+        Any[sparse, Dict("type" => :UCB1, "c" => 10000)],
+        Any[sparse, Dict("type" => :TS)],
+        Any[sparse, Dict("type" => :TSM, "ARM" => () -> ArmRewardModel(0.01, 0.01, -100., 1., 1 / 2, 1 / (2 * (1 / 10. ^ 2)), -5000., -10000., 1., 1 / 2,  1 / (2 * (1 / 1.^2))))],
+        Any[sparse, Dict("type" => :AUCB, "SP" => [Dict("type" => :UCB1, "c" => 100), Dict("type" => :UCB1, "c" => 10000)])]
+    ]
+
+    depth = 5
+
+    nloop_min = 100
+    nloop_max = 10000
+    runtime_max = 1.
+
+    N = 100
+
+    datafile = "exp.jld"
+
+    expBatchWorker(scenarios, tree_policies, depth, nloop_min, nloop_max, runtime_max, N, bParallel = bParallel, datafile = datafile, bAppend = bAppend)
+end
+
+
 if false
     pm = UTMPlannerV1(seed = round(Int64, time()))
 
@@ -814,7 +977,7 @@ if false
     #tree_policy = Any[sparse, Dict("type" => :TS)]
     #tree_policy = Any[sparse, Dict("type" => :TSM, "ARM" => () -> ArmRewardModel(0.01, 0.01, -100., 1., 1 / 2, 1 / (2 * (1 / 10. ^ 2)), -5000., -10000., 1., 1 / 2,  1 / (2 * (1 / 1.^2))))]
     #tree_policy = Any[sparse, Dict("type" => :AUCB, "SP" => [Dict("type" => :UCB1, "c" => 100), Dict("type" => :UCB1, "c" => 10000)])]
-    #tree_policy = Any[sparse, Dict("type" => :UCB1, "c" => 100), Dict("type" => :MSUCT, "L" => [1500.], "N" => [4])]
+    #tree_policy = Any[sparse, Dict("type" => :UCB1, "c" => 100), Dict("type" => :MS, "L" => [1500.], "N" => [4])]
 
     # :default, :MC, :inf, :once, :CE_worst, :CE_best, :MS
     #rollout = nothing
@@ -880,8 +1043,7 @@ function Experiment02()
     srand(seed)
 
     #sn_list = 1
-    #sn_list = unique(rand(1024:typemax(Int16), 1100))[1:100]
-    sn_list = unique(rand(1024:typemax(Int16), 1100))[1:5]
+    sn_list = unique(rand(1024:typemax(Int16), 1100))[1:100]
 
     N = 100
     RE_threshold = 0.01
@@ -926,14 +1088,6 @@ function Experiment02()
         #    Dict("type" => :ProgressiveWidening, "c" => 2, "alpha" => 0.2),
         #    Dict("type" => :ProgressiveWidening, "c" => 2, "alpha" => 0.4),
         #    Dict("type" => :ProgressiveWidening, "c" => 2, "alpha" => 0.6)]
-
-        #for tree_policy in Any[Any[sparse, Dict("type" => :MSUCT, "L" => [1500.], "N" => [4])]]
-
-        #for tree_policy in Any[
-        #    sparse,
-        #    Any[sparse, Dict("type" => :UCB1, "c" = 100)],
-        #    Any[sparse, Dict("type" => :MSUCT, "L" => [1500.], "N" => [4])],
-        #    Any[sparse, Dict("type" => :MSUCT, "L" => [1500.], "N" => [4], "bPropagateN" => true)]]
 
             println("N: ", N, ", RE_threshold: ", RE_threshold, ", depth: ", depth, ", nloop_min: ", nloop_min, ", nloop_max: ", nloop_max, ", runtime_max: ", runtime_max, ", tree_policy: ", tree_policy, ", rollout: ", rollout[1])
 
