@@ -59,7 +59,6 @@ type TreePolicyParams
 
 
     bMSUCT::Bool
-    ms_bPropagateN::Bool
     ms_L::Vector{Float64}
     ms_N::Vector{Int64}
 
@@ -155,11 +154,6 @@ type TreePolicyParams
 
                 elseif tree_policy["type"] == :MSUCT
                     self.bMSUCT = true
-                    if haskey(tree_policy, "bPropagateN")
-                        self.ms_bPropagateN = tree_policy["bPropagateN"]
-                    else
-                        self.ms_bPropagateN = false
-                    end
                     self.ms_L = tree_policy["L"]
                     self.ms_N = tree_policy["N"]
 
@@ -316,15 +310,13 @@ function rollout_default(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64; 
 end
 
 
-function simulate(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64; MSState::Union{Dict{Any,Any}, Void} = nothing, bStat::Bool = false, debug::Int64 = 0)
+function simulate(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64; MSState::Union{Dict{ASCIIString,Any}, Void} = nothing, bStat::Bool = false, debug::Int64 = 0)
 
     if alg.tree_policy.bMSUCT
         if MSState == nothing
-            MSState = Dict{Any, Any}()
+            MSState = Dict{ASCIIString, Any}()
             MSState["level"] = ones(Int64, pm.sc.nUAV)
-            MSState["nsplit"] = 0
         end
-        MSState["nsplit"] = 1
     end
 
     if alg.visualizer != nothing
@@ -402,7 +394,11 @@ function simulate(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64; MSState
             print("    ")
         end
 
-        ro = alg.rollout_func(alg, pm, s, h, d, debug = debug)
+        if alg.rollout_type == :MS
+            ro = alg.rollout_func(alg, pm, s, h, d, MSState = deepcopy(MSState), debug = debug)
+        else
+            ro = alg.rollout_func(alg, pm, s, h, d, debug = debug)
+        end
 
         if debug > 3 && rollout_type == :default
             println()
@@ -496,30 +492,24 @@ function simulate(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64; MSState
 
     n = 1
 
-    # XXX need to backpropagate number of visits through intermediate nodes to root node?
     if alg.tree_policy.bMSUCT
-        MSState["nsplit"] = 0
-
-        MSState_ = Dict{Any, Any}()
-        MSState_["level"] = copy(MSState["level"])
-        MSState_["nsplit"] = 0
-
         loc = [pm.cell_len / 2 + (s.location[1] - 1) * pm.cell_len, pm.cell_len / 2 + (s.location[2] - 1) * pm.cell_len]
 
         for i = 2:pm.sc.nUAV
-            if MSState["level"][i] < length(ms_L) + 1
+            # XXX replicate once when hitting a level first time
+            if MSState["level"][i] < length(alg.tree_policy.ms_L) + 1
                 loc_ = pm.sc_state.UAVStates[i].curr_loc
 
-                if norm(loc - loc_) < ms_L[MSState["level"][i]]
+                if norm(loc - loc_) < alg.tree_policy.ms_L[MSState["level"][i]]
                     if debug > 2
-                        println("    UAV 1 ", loc, " and UAV ", i, " ", neat(loc_), " hit the level ", MSState["level"][i], " at level ", d)
+                        println("    UAV 1 ", loc, " and UAV ", i, " ", neat(loc_), " hit the MS level ", MSState["level"][i], " at level ", d)
                     end
 
-                    if ms_N[MSState["level"][i]] > n
-                        n = ms_N[MSState["level"][i]]
+                    if alg.tree_policy.ms_N[MSState["level"][i]] > n
+                        n = alg.tree_policy.ms_N[MSState["level"][i]]
                     end
 
-                    MSState_["level"][i] += 1
+                    MSState["level"][i] += 1
                 end
             end
         end
@@ -546,15 +536,15 @@ function simulate(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64; MSState
 
         if debug > 2
             println("    Q: ", neat(Q * pm.reward_norm_const), ", Qv: ", neat(Qv), ", a: ", a, ", s_: ", s_, ", o: ", o, ", r: ", neat(r * pm.reward_norm_const))
-            if debug > 3
-                Na = zeros(Int64, pm.nActions)
-                for i = 1:pm.nActions
-                    Na[i] = alg.N[(h, pm.actions[i])]
+            if k == n
+                if debug > 3
+                    Na = zeros(Int64, pm.nActions)
+                    for i = 1:pm.nActions
+                        Na[i] = alg.N[(h, pm.actions[i])]
+                    end
+                    println("    Ns: ", alg.Ns[h], ", N: ", Na)
                 end
-                println("    Ns: ", alg.Ns[h], ", N: ", Na)
-            end
-            if alg.tree_policy.bUCB1_tuned || alg.tree_policy.bUCB_V
-                if !alg.tree_policy.bMSUCT || k == n
+                if alg.tree_policy.bUCB1_tuned || alg.tree_policy.bUCB_V
                     println("    var: ", neat(var_), ", RE: ", neat(RE))
                 end
             end
@@ -565,27 +555,15 @@ function simulate(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64; MSState
         end
 
         if alg.tree_policy.bMSUCT
-            q = r + alg.gamma_ * simulate(alg, pm, s_, History([h.history; a; o]), d - 1, MSState = MSState_, debug = debug)
+            q = r + alg.gamma_ * simulate(alg, pm, s_, History([h.history; a; o]), d - 1, MSState = deepcopy(MSState), debug = debug)
             q_ += (q - q_) / k
         else
-
             q = r + alg.gamma_ * simulate(alg, pm, s_, History([h.history; a; o]), d - 1, debug = debug)
             q_ = q
         end
 
-        if alg.tree_policy.bMSUCT
-            if !ms_bPropagateN
-                alg.Ns[h] += 1
-                alg.N[(h, a)] += 1
-            else
-                alg.Ns[h] += MSState_["nsplit"]
-                alg.N[(h, a)] += MSState_["nsplit"]
-                MSState["nsplit"] += MSState_["nsplit"]
-            end
-        else
-            alg.Ns[h] += 1
-            alg.N[(h, a)] += 1
-        end
+        alg.Ns[h] += 1
+        alg.N[(h, a)] += 1
         alg.Q[(h, a)] += (q - alg.Q[(h, a)]) / alg.N[(h, a)]
         alg.X2[(h, a)] += q * q
 

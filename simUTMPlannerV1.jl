@@ -181,19 +181,19 @@ function rollout_default(alg::POMCP, pm::UTMPlannerV1, s::UPState, h::History, d
 
     s_, o, r = alg.Generative(pm, s, a)
 
-    return r + rgamma * rollout_default(alg, pm, s_, h, d - 1, rgamma = rgamma, debug = debug)
+    return r + rgamma * rollout_default(alg, pm, s_, History([h.history; a; o]), d - 1, rgamma = rgamma, debug = debug)
 end
 
 
 function rollout_MC(alg::POMCP, pm::UTMPlannerV1, s::UPState, h::History, d::Int64; n::Int64 = 10, rgamma::Float64 = 0.9, debug::Int64 = 0)
 
-    r = 0.
+    q = 0.
 
     for i = 1:n
-        r += (rollout_default(alg, pm, s, h, d, rgamma = rgamma) - r) / i
+        q += (rollout_default(alg, pm, s, h, d, rgamma = rgamma) - q) / i
     end
 
-    return r
+    return q
 end
 
 
@@ -203,25 +203,27 @@ function rollout_none(alg::POMCP, pm::UTMPlannerV1, s::UPState, h::History, d::I
         return 0
     end
 
-    s_, o, r = alg.Generative(pm, s, pm.actions[1])
+    a = pm.actions[1]
 
-    return r + rgamma * rollout_none(alg, pm, s_, h, d - 1, rgamma = rgamma)
+    s_, o, r = alg.Generative(pm, s, a)
+
+    return r + rgamma * rollout_none(alg, pm, s_, History([h.history; a; o]), d - 1, rgamma = rgamma)
 end
 
 
 function rollout_inf(alg::POMCP, pm::UTMPlannerV1, s::UPState, h::History, d::Int64; rgamma::Float64 = 0.9, debug::Int64 = 0)
 
-    R = 0.
+    q = 0.
 
     i = 0
     while !isEnd(pm, s)
         s_, o, r = alg.Generative(pm, s, pm.actions[1])
-        R += rgamma^i * r
+        q += rgamma^i * r
         i += 1
         s = s_
     end
 
-    return R
+    return q
 end
 
 
@@ -235,7 +237,7 @@ function rollout_once(alg::POMCP, pm::UTMPlannerV1, s::UPState, h::History, d::I
 
     s_, o, r = alg.Generative(pm, s, a)
 
-    return r + rgamma * rollout_none(alg, pm, s_, h, d - 1, rgamma = rgamma)
+    return r + rgamma * rollout_none(alg, pm, s_, History([h.history; a; o]), d - 1, rgamma = rgamma)
 end
 
 
@@ -301,10 +303,11 @@ function rollout_CE(alg::POMCP, pm::UTMPlannerV1, s::UPState, h::History, d::Int
         return r
     end
 
-    r += rgamma * rollout_none(alg, pm, s_, h, d - 1, rgamma = rgamma)
+    q = r + rgamma * rollout_none(alg, pm, s_, History([h.history; a_; o]), d - 1, rgamma = rgamma)
+
     push!(alg.CE_samples, (a, r))
 
-    return r
+    return q
 end
 
 
@@ -444,65 +447,50 @@ function updateRolloutPolicyForCE(pm::UTMPlannerV1, alg::POMCP, prev_dist_param:
 end
 
 
-function rollout_MS(alg::POMCP, pm::UTMPlannerV1, s::UPState, h::History, d::Int64; MSState::Union{Vector{Int64}, Void} = nothing, rgamma::Float64 = 0.9, debug::Int64 = 0)
+function rollout_MS(alg::POMCP, pm::UTMPlannerV1, s::UPState, h::History, d::Int64; MSState::Union{Dict{ASCIIString, Any}, Void} = nothing, rgamma::Float64 = 0.9, debug::Int64 = 0)
 
-    # XXX hardcoded
-    ms_L = [1000]
-    ms_N = [4]
+    @test MSState != nothing
 
-    if d == 0
+    if d == 0 || isEnd(pm, s)
         return 0
     end
 
-    if MSState == nothing
-        a = default_policy(pm, s)
-
-        if debug > 2
-            println("    rollout action: $a at level $d")
-        end
-
-        MSState = ones(Int64, pm.sc.nUAV)
-
-    else
-        a = pm.actions[1]
-
-    end
-
-    s_, o, r = alg.Generative(pm, s, a)
-
-    if isEnd(pm, s_)
-        return r
-    end
-
     n = 1
-    MSState_ = copy(MSState)
 
-    loc = grid2coord(pm, s_.location)
+    loc = [pm.cell_len / 2 + (s.location[1] - 1) * pm.cell_len, pm.cell_len / 2 + (s.location[2] - 1) * pm.cell_len]
 
     for i = 2:pm.sc.nUAV
-        if MSState[i] < length(ms_L) + 1
+        # XXX replicate once when hitting a level first time
+        if MSState["level"][i] < length(alg.tree_policy.ms_L) + 1
             loc_ = pm.sc_state.UAVStates[i].curr_loc
 
-            if norm(loc - loc_) < ms_L[MSState[i]]
+            if norm(loc - loc_) < alg.tree_policy.ms_L[MSState["level"][i]]
                 if debug > 2
-                    println("    UAV 1 ", loc, " and UAV ", i, " ", neat(loc_), " hit the level ", MSState[i], " at level ", d)
+                    println("    UAV 1 ", loc, " and UAV ", i, " ", neat(loc_), " hit the MS level ", MSState["level"][i], " at level ", d)
                 end
 
-                if ms_N[MSState[i]] > n
-                    n = ms_N[MSState[i]]
+                if alg.tree_policy.ms_N[MSState["level"][i]] > n
+                    n = alg.tree_policy.ms_N[MSState["level"][i]]
                 end
 
-                MSState_[i] += 1
+                MSState["level"][i] += 1
             end
         end
     end
 
-    r_ = 0.
-    for i = 1:n
-        r_ += (rollout_MS(alg, pm, s_, h, d - 1, MSState = MSState_, rgamma = rgamma, debug = debug) - r_) / i
+    a = pm.actions[1]
+
+    q_ = 0.
+
+    for k = 1:n
+        s_, o, r = alg.Generative(pm, s, a)
+
+        q = r + rgamma * rollout_MS(alg, pm, s_, History([h.history; a; o]), d - 1, MSState = deepcopy(MSState), rgamma = rgamma, debug = debug)
+
+        q_ += (q - q_) / k
     end
 
-    return r + rgamma * r_
+    return q_
 end
 
 
@@ -808,8 +796,8 @@ if false
 
     println("seed: ", up_seed, ", ", mcts_seed)
 
-    scenario_number = nothing
-    #scenario_number = 1
+    #scenario_number = nothing
+    scenario_number = 1
 
     depth = 5
 
@@ -826,10 +814,11 @@ if false
     #tree_policy = Any[sparse, Dict("type" => :TS)]
     #tree_policy = Any[sparse, Dict("type" => :TSM, "ARM" => () -> ArmRewardModel(0.01, 0.01, -100., 1., 1 / 2, 1 / (2 * (1 / 10. ^ 2)), -5000., -10000., 1., 1 / 2,  1 / (2 * (1 / 1.^2))))]
     #tree_policy = Any[sparse, Dict("type" => :AUCB, "SP" => [Dict("type" => :UCB1, "c" => 100), Dict("type" => :UCB1, "c" => 10000)])]
+    #tree_policy = Any[sparse, Dict("type" => :UCB1, "c" => 100), Dict("type" => :MSUCT, "L" => [1500.], "N" => [4])]
 
     # :default, :MC, :inf, :once, :CE_worst, :CE_best, :MS
     #rollout = nothing
-    rollout = (:once, rollout_once)
+    rollout = (:none, rollout_none)
     #rollout = (:MS, rollout_MS)
 
     debug = 2
@@ -904,7 +893,7 @@ function Experiment02()
     runtime_max = 1.
 
     #rollout = nothing
-    rollout = (:once, rollout_once)
+    rollout = (:none, rollout_none)
     #rollout = (:MS, rollout_MS)
 
     debug = 0
