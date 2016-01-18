@@ -809,10 +809,15 @@ function runExp(scenario::Int64, up_seed::Union{Int64, Vector{Int64}}, mcts_seed
         rollout = (:refined, rollout_refined)
     end
 
+    opt_return = nothing
     returns = zeros(N)
 
     for i = 1:N
         pm = UTMPlannerV1(seed = up_seed[i], scenario_number = scenario)
+
+        if i == 1
+            opt_return = (pm.sc.UAVs[1].nwaypoints + 1) * 100
+        end
 
         alg = POMCP(seed = mcts_seed[i], depth = depth, nloop_min = nloop_min, nloop_max = nloop_max, runtime_max = runtime_max, gamma_ = 0.9, tree_policy = tree_policy, rollout = rollout)
 
@@ -826,9 +831,9 @@ function runExp(scenario::Int64, up_seed::Union{Int64, Vector{Int64}}, mcts_seed
     end
 
     if bParallel
-        return id, returns
+        return id, opt_return, returns
     else
-        return returns
+        return opt_return, returns
     end
 end
 
@@ -854,14 +859,16 @@ function expBatchWorker(scenarios::Union{Int64, Vector{Int64}}, tree_policies, d
                 for tree_policy in tree_policies
                     results = pmap(id -> runExp(scenario, up_seed_list[id], mcts_seed_list[id], tree_policy, 1, depth = depth, nloop_min = nloop_min, nloop_max = nloop_max, runtime_max = runtime_max, bParallel = true, id = id), 1:N)
 
+                    opt_return = 0
                     returns = zeros(N)
 
                     for result in results
                         id = result[1]
-                        returns[id] = result[2]
+                        opt_return = result[2]
+                        returns[id] = result[3]
                     end
 
-                    R[(scenario, string(tree_policy))] = Dict("up_seed_list" => copy(up_seed_list), "mcts_seed_list" => copy(mcts_seed_list), "N" => N, "depth" => depth, "nloop_min" => nloop_min, "nloop_max" => nloop_max, "runtime_max" => runtime_max, "returns" => returns)
+                    R[(scenario, string(tree_policy))] = Dict("up_seed_list" => copy(up_seed_list), "mcts_seed_list" => copy(mcts_seed_list), "N" => N, "depth" => depth, "nloop_min" => nloop_min, "nloop_max" => nloop_max, "runtime_max" => runtime_max, "opt_return" => opt_return, "returns" => returns)
                 end
 
             else
@@ -869,17 +876,18 @@ function expBatchWorker(scenarios::Union{Int64, Vector{Int64}}, tree_policies, d
 
                 for result in results
                     tree_policy = result[1]
-                    returns = result[2]
+                    opt_return = result[2]
+                    returns = result[3]
 
-                    R[(scenario, string(tree_policy))] = Dict("up_seed_list" => copy(up_seed_list), "mcts_seed_list" => copy(mcts_seed_list), "N" => N, "depth" => depth, "nloop_min" => nloop_min, "nloop_max" => nloop_max, "runtime_max" => runtime_max, "returns" => returns)
+                    R[(scenario, string(tree_policy))] = Dict("up_seed_list" => copy(up_seed_list), "mcts_seed_list" => copy(mcts_seed_list), "N" => N, "depth" => depth, "nloop_min" => nloop_min, "nloop_max" => nloop_max, "runtime_max" => runtime_max, "opt_return" => opt_return, "returns" => returns)
                 end
 
             end
 
         else
             for tree_policy in tree_policies
-                returns = runExp(scenario, up_seed_list, mcts_seed_list, tree_policy, N, depth = depth, nloop_min = nloop_min, nloop_max = nloop_max, runtime_max = runtime_max)
-                R[(scenario, string(tree_policy))] = Dict("up_seed_list" => copy(up_seed_list), "mcts_seed_list" => copy(mcts_seed_list), "N" => N, "depth" => depth, "nloop_min" => nloop_min, "nloop_max" => nloop_max, "runtime_max" => runtime_max, "returns" => returns)
+                opt_return, returns = runExp(scenario, up_seed_list, mcts_seed_list, tree_policy, N, depth = depth, nloop_min = nloop_min, nloop_max = nloop_max, runtime_max = runtime_max)
+                R[(scenario, string(tree_policy))] = Dict("up_seed_list" => copy(up_seed_list), "mcts_seed_list" => copy(mcts_seed_list), "N" => N, "depth" => depth, "nloop_min" => nloop_min, "nloop_max" => nloop_max, "runtime_max" => runtime_max, "opt_return" => opt_return, "returns" => returns)
             end
 
         end
