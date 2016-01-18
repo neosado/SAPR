@@ -175,7 +175,7 @@ type UTMPlannerV1 <: POMDP
         end
 
         self.reward_min = -10000
-        self.reward_max = 0
+        self.reward_max = (self.sc.UAVs[1].nwaypoints + 1) * 100
 
         self.reward_norm_const = 1.
 
