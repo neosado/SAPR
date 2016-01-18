@@ -390,7 +390,7 @@ function simulate(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64; MSState
         alg.Ns[h] = 0
         alg.B[h] = [s]
 
-        if debug > 3 && rollout_type == :default
+        if debug > 3 && alg.rollout_type == :default
             print("    ")
         end
 
@@ -400,7 +400,7 @@ function simulate(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64; MSState
             ro = alg.rollout_func(alg, pm, s, h, d, debug = debug)
         end
 
-        if debug > 3 && rollout_type == :default
+        if debug > 3 && alg.rollout_type == :default
             println()
         end
 
