@@ -482,8 +482,23 @@ function rollout_MS(alg::POMCP, pm::UTMPlannerV1, s::UPState, h::History, d::Int
 
     @test MSState != nothing
 
-    if d == 0 || isEnd(pm, s)
+    if isEnd(pm, s)
         return 0
+
+    elseif d == 0
+        uav = pm.sc.UAVs[1]
+
+        htype, hindex, hloc = convertHeading(uav, s.heading)
+
+        if htype == :base
+            r = -round(Int64, ceil(norm(pm.sc.landing_bases[hindex] - grid2coord(pm, s.location)) / uav.velocity))
+        elseif htype == :waypoint
+            r = (uav.nwaypoints - hindex + 1) * 100 + 100
+        elseif htype == :end_
+            r = 100
+        end
+
+        return r
     end
 
     n = 1
