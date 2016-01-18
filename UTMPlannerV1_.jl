@@ -174,7 +174,7 @@ type UTMPlannerV1 <: POMDP
             end
         end
 
-        self.reward_min = -1000
+        self.reward_min = -10000
         self.reward_max = 0
 
         self.reward_norm_const = 1.
@@ -316,7 +316,7 @@ function Generative(up::UTMPlannerV1, s::UPState, a::UPAction)
     end
 
     if bMAC
-        r += -1000
+        r += -10000
     end
 
     s_ = UPState(coord2grid(up, uav_state.curr_loc), uav_state.status, uav_state.heading, t)
@@ -397,7 +397,7 @@ function reward(up::UTMPlannerV1, s::UPState, a::UPAction, s_::UPAction)
 
             if  state__.status == :flying
                 if norm(state__.curr_loc - uav_state.curr_loc) < up.sc.sa_dist
-                    r += -1000
+                    r += -10000
                 end
             end
         end

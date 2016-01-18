@@ -429,12 +429,9 @@ function generateScenario_(seed::Int64)
     nUAV = 5
     min_route_points = 4
     rindex_noise = 2
-    #nNearbyUAV = 2
-    #sep_dist_margin = 20.
-    #sep_dist_margin_noise = 5.
-    nNearbyUAV = 1
-    sep_dist_margin = 700.
-    sep_dist_margin_noise = 150.
+    nNearbyUAV = 2
+    sep_dist_margin = 20.
+    sep_dist_margin_noise = 5.
 
     UAVInfo = Any[]
 
