@@ -432,16 +432,35 @@ function generateScenario_(seed::Int64)
     nNearbyUAV = 2
     sep_dist_margin = 20.
     sep_dist_margin_noise = 5.
+    minimum_mid_route_length = 3000.
+    minimum_initial_distance_1 = 2800.
+    minimum_initial_distance = 2000.
+
+    nMaxTry = 1000
+
 
     UAVInfo = Any[]
+    bSucceed = true
 
     for i = 1:nUAV
-        while true
+        nTry = 0
+
+        while nTry < nMaxTry
+            nTry += 1
+
             uav_info = generateUAV(rng, x = params.x, y = params.y, margin = 100., dist_mean = 1500., dist_noise = 0.3, angle_noise = 45., v_mean = 40., v_min = 20., v_max = 60.)
 
             route = uav_info["route"]
 
             if length(route) < min_route_points
+                continue
+            end
+
+            mid_route_length = 0.
+            for j = 2:length(route)-2
+                mid_route_length += norm(route[j+1] - route[j])
+            end
+            if mid_route_length < minimum_mid_route_length
                 continue
             end
 
@@ -489,29 +508,53 @@ function generateScenario_(seed::Int64)
                     end
 
                     sc, sc_state = generateScenarioWithParams(params, UAVInfo_; v_def = 40., v_min = 20., v_max = 60.)
+                end
 
-                    if !check_sa_violation(sc, sc_state, draw = false, wait = false)
-                        UAVInfo = UAVInfo_
+                if norm(UAVInfo_[i]["uav_state"]["curr_loc"] - UAVInfo_[1]["uav_state"]["curr_loc"]) < minimum_initial_distance_1
+                    continue
+                end
+
+                bViolateInitDist = false
+                for j = 1:i-1
+                    if j == 1
+                        minimum_initial_distance_ = minimum_initial_distance_1
+                    else
+                        minimum_initial_distance_ = minimum_initial_distance
+                    end
+                    if norm(UAVInfo_[i]["uav_state"]["curr_loc"] - UAVInfo_[j]["uav_state"]["curr_loc"]) < minimum_initial_distance_
+                        bViolateInitDist = true
                         break
                     end
+                end
+                if bViolateInitDist
+                    continue
+                end
 
-                else
-                    if !check_sa_violation(sc, sc_state, draw = false, wait = false)
-                        UAVInfo = UAVInfo_
-                        break
-                    end
-
+                if !check_sa_violation(sc, sc_state, draw = false, wait = false)
+                    UAVInfo = UAVInfo_
+                    break
                 end
 
             end
         end
+
+        if nTry == nMaxTry
+            bSucceed = false
+            break
+        end
     end
 
-    sc, sc_state = generateScenarioWithParams(params, UAVInfo; v_def = 40., v_min = 20., v_max = 60.)
+    if bSucceed
+        sc, sc_state = generateScenarioWithParams(params, UAVInfo; v_def = 40., v_min = 20., v_max = 60.)
 
-    params.UAVs = nothing
+        params.UAVs = nothing
 
-    return sc, sc_state, UAVInfo, params
+        return sc, sc_state, UAVInfo, params
+
+    else
+        return false
+
+    end
 end
 
 
@@ -544,8 +587,24 @@ function generateScenario(scenario_number::Union{Int64, Vector{Int64}, Void} = n
             if sn <= 1024
                 sc, sc_state, UAVInfo, params = eval(symbol("scenario_" * string(sn)))()
             else
-                @assert sn <= typemax(Int16)
-                sc, sc_state, UAVInfo, params = generateScenario_(sn)
+                sc = nothing
+                sc_state = nothing
+                UAVInfo = nothing
+                params = nothing
+
+                while true
+                    @assert sn <= typemax(Int16)
+
+                    ret = generateScenario_(sn)
+
+                    if typeof(ret) <: Bool
+                        sn += 1
+                        #println("scenario restart: ", sn)
+                    else
+                        sc, sc_state, UAVInfo, params = ret
+                        break
+                    end
+                end
             end
 
             UAVStates = Any[]

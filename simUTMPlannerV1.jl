@@ -950,20 +950,25 @@ function runExpBatch(; bParallel::Bool = false, bAppend::Bool = false)
     scenarios = unique(rand(10000:typemax(Int16), round(Int64, nScenarios * 1.1)))[1:nScenarios]
 
     sparse = Dict("type" => :SparseUCT, "nObsMax" => 4)
-    MS = Dict("type" => :MS, "L" => [1500.], "N" => [4])
+    MS = Dict("type" => :MS, "L" => [500., 200.], "N" => [2, 2])
 
     tree_policies = Any[
-        Any[sparse, Dict("type" => :UCB1, "c" => 100)],
-        Any[sparse, Dict("type" => :UCB1, "c" => 10000)],
-        Any[sparse, Dict("type" => :TS)],
+        #Any[sparse, Dict("type" => :UCB1, "c" => 100)],
+        #Any[sparse, Dict("type" => :UCB1, "c" => 10000)],
+        #Any[sparse, Dict("type" => :TS)],
         Any[sparse, Dict("type" => :TSM, "ARM" => () -> ArmRewardModel(0.01, 0.01, -100., 1., 1 / 2, 1 / (2 * (1 / 10. ^ 2)), -5000., -10000., 1., 1 / 2,  1 / (2 * (1 / 1.^2))))],
-        Any[sparse, Dict("type" => :AUCB, "SP" => [Dict("type" => :UCB1, "c" => 100), Dict("type" => :UCB1, "c" => 10000)])]
+        Any[sparse, Dict("type" => :AUCB, "SP" => [Dict("type" => :UCB1, "c" => 100), Dict("type" => :UCB1, "c" => 10000)])],
+        #Any[sparse, Dict("type" => :UCB1, "c" => 10000), Dict("type" => :MS, "L" => [500.], "N" => [2])],
+        #Any[sparse, Dict("type" => :UCB1, "c" => 10000), Dict("type" => :MS, "L" => [500.], "N" => [4])],
+        #Any[sparse, Dict("type" => :UCB1, "c" => 10000), Dict("type" => :MS, "L" => [500., 200.], "N" => [2, 2])]
+        Any[sparse, Dict("type" => :TSM, "ARM" => () -> ArmRewardModel(0.01, 0.01, -100., 1., 1 / 2, 1 / (2 * (1 / 10. ^ 2)), -5000., -10000., 1., 1 / 2,  1 / (2 * (1 / 1.^2)))), MS],
+        Any[sparse, Dict("type" => :AUCB, "SP" => [Dict("type" => :UCB1, "c" => 100), Dict("type" => :UCB1, "c" => 10000)]), MS],
     ]
 
     depth = 5
 
-    nloop_min = 100
-    nloop_max = 10000
+    nloop_min = 1000
+    nloop_max = 1000
     runtime_max = 1.
 
     N = 100
@@ -1006,30 +1011,40 @@ end
 
 
 if false
-    up_seed = round(Int64, time())
-    mcts_seed = round(Int64, time()) + 1
+    srand(12)
+    nScenarios = 100
+    scenarios = unique(rand(10000:typemax(Int16), round(Int64, nScenarios * 1.1)))[1:nScenarios]
+    for i = 1:nScenarios
+        simulateScenario(scenarios[i], draw = true, wait = false, bSim = false)
+    end
+end
 
-    println("seed: ", up_seed, ", ", mcts_seed)
 
+if false
     #scenario_number = nothing
     scenario_number = 1
 
+    up_seed = round(Int64, time())
+    mcts_seed = round(Int64, time()) + 1
+
+    println("scenario: ", scenario_number, ", seed: ", up_seed, ", ", mcts_seed)
+
     depth = 5
 
-    nloop_min = 100
+    nloop_min = 1000
     nloop_max = 1000
     runtime_max = 0.
 
     sparse = Dict("type" => :SparseUCT, "nObsMax" => 4)
     pw = Dict("type" => :ProgressiveWidening, "c" => 2, "alpha" => 0.4)
+    MS = Dict("type" => :MS, "L" => [500., 200.], "N" => [2, 2])
 
     #tree_policy = nothing
-    tree_policy = Any[sparse, Dict("type" => :UCB1, "c" => 100)]
-    #tree_policy = Any[sparse, Dict("type" => :UCB1, "c" => 10000)]
+    #tree_policy = Any[sparse, Dict("type" => :UCB1, "c" => 100)]
+    tree_policy = Any[sparse, Dict("type" => :UCB1, "c" => 10000)]
     #tree_policy = Any[sparse, Dict("type" => :TS)]
     #tree_policy = Any[sparse, Dict("type" => :TSM, "ARM" => () -> ArmRewardModel(0.01, 0.01, -100., 1., 1 / 2, 1 / (2 * (1 / 10. ^ 2)), -5000., -10000., 1., 1 / 2,  1 / (2 * (1 / 1.^2))))]
     #tree_policy = Any[sparse, Dict("type" => :AUCB, "SP" => [Dict("type" => :UCB1, "c" => 100), Dict("type" => :UCB1, "c" => 10000)])]
-    #tree_policy = Any[sparse, Dict("type" => :UCB1, "c" => 100), Dict("type" => :MS, "L" => [1500.], "N" => [4])]
 
     # :default, :MC, :inf, :once, :CE_worst, :CE_best, :MS
     #rollout = nothing
