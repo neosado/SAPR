@@ -306,7 +306,7 @@ function selectAction(policy::AUCBPolicy, pm::POMDP; feasible_actions::Union{Dic
                 Qv[i] = Inf
             else
                 var_[i] = (policy.X2[i] - policy.N[i] * (policy.Q[i] * policy.Q[i])) / (policy.N[i] - 1)
-                if abs(var_[i]) < 1.e-7
+                if abs(var_[i]) < 1.e-3
                     var_[i] = 0.
                 end
 
