@@ -5,9 +5,9 @@ function init_cluster(parallel::Symbol = :local_)
 
     ncpu_local = CPU_CORES / 2
     machines = [
-        ("youngjun@tula", 20, "/home/youngjun/MineField"),
-        ("youngjun@cheonan", 4, "/home/youngjun/MineField"),
-        ("youngjun@cambridge", 6, "/home/youngjun/MineField")
+        ("youngjun@tula", 20, "/home/youngjun/SAPR"),
+        ("youngjun@cheonan", 4, "/home/youngjun/SAPR"),
+        ("youngjun@cambridge", 6, "/home/youngjun/SAPR")
     ]
 
     if parallel == :local_ || parallel == :both
