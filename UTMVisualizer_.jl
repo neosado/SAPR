@@ -138,7 +138,7 @@ function visUpdate(vis::UTMVisualizer, sc::UTMScenario, sc_state::UTMScenarioSta
         text = vis.ax[:text](0.5, -0.02, "$(round(Int64, sc.x))ft x $(round(Int64, sc.y))ft, scenario: $(sc.sn)", horizontalalignment = "center", verticalalignment = "top", transform = vis.ax[:transAxes])
     else
         if sim == nothing
-            text = vis.ax[:text](0.5, -0.02, "timestep: $timestep, action: None_, observation: none, reward: 0, total reward: 0", horizontalalignment = "center", verticalalignment = "top", transform = vis.ax[:transAxes])
+            text = vis.ax[:text](0.5, -0.02, "timestep: $timestep, action: , observation: none, reward: 0, total reward: 0", horizontalalignment = "center", verticalalignment = "top", transform = vis.ax[:transAxes])
         else
             action, observation, r, R  = sim
             text = vis.ax[:text](0.5, -0.02, "timestep: $timestep, action: $action, observation: $(round(Int64, observation)), reward: $r, total reward: $R", horizontalalignment = "center", verticalalignment = "top", transform = vis.ax[:transAxes])

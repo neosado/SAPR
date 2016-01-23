@@ -67,17 +67,17 @@ function convertHeading(uav::UAV, heading::Symbol)
 
     s = string(heading)
 
-    if contains(s, "Waypoint")
+    if contains(s, "waypoint")
         htype = :waypoint
         hindex = parse(Int64, s[9:end])
         @assert hindex < uav.nwaypoints + 1
 
-    elseif contains(s, "Base")
+    elseif contains(s, "base")
         htype = :base
         hindex = parse(Int64, s[5:end])
         @assert hindex < length(uav.sc.landing_bases) + 1
 
-    elseif contains(s, "End")
+    elseif contains(s, "end")
         htype = :end_
         hindex = 0
 
@@ -124,7 +124,7 @@ type UAVState
         self.curr_loc = uav.start_loc
         self.past_locs = Vector{Float64}[]
 
-        self.heading = :Waypoint1
+        self.heading = :waypoint1
 
         return self
     end
@@ -150,10 +150,10 @@ function updateStateGPSINS(uav::UAV, state::UAVState)
 
         if htype == :waypoint
             if hindex == uav.nwaypoints
-                state.heading = :End
+                state.heading = :end_
             else
                 hindex += 1
-                state.heading = symbol("Waypoint" * string(hindex))
+                state.heading = symbol("waypoint" * string(hindex))
             end
 
             htype, hindex, hloc = convertHeading(uav, state.heading)
@@ -192,10 +192,10 @@ function updateStateNav1(uav::UAV, state::UAVState)
 
     if htype == :waypoint
         if hindex == uav.nwaypoints
-            next_heading = :End
+            next_heading = :end_
         else
             hindex += 1
-            next_heading = symbol("Waypoint" * string(hindex))
+            next_heading = symbol("waypoint" * string(hindex))
         end
 
         next_htype, next_hindex, next_hloc = convertHeading(uav, next_heading)
@@ -260,8 +260,6 @@ end
 
 
 function updateHeading(uav::UAV, state::UAVState, heading::Symbol)
-
-    convertHeading(uav, heading)
 
     state.heading = heading
 end

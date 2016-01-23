@@ -37,12 +37,12 @@ immutable UPState <: State
 
     location::Tuple{Int64, Int64}
     status::Symbol
-    heading::Symbol
+    last::Symbol
     t::Int64
 end
 
 function string(s::UPState)
-    return "(" * string(s.location) * "," * string(s.status) * "," * string(s.heading) * "," * string(s.t) * ")"
+    return "(" * string(s.location) * "," * string(s.status) * "," * string(s.last) * "," * string(s.t) * ")"
 end
 
 type UPStateIter
@@ -156,10 +156,13 @@ type UTMPlannerV1 <: POMDP
         self.states = nothing
         self.nStates = 0
 
-        if self.sc.UAVs[1].nwaypoints > 2
-            self.actions = [UPAction(:None_), UPAction(:Waypoint1), UPAction(:Waypoint2), UPAction(:Waypoint3), UPAction(:Base1), UPAction(:Base2), UPAction(:Base3)]
-        else
-            self.actions = [UPAction(:None_), UPAction(:Waypoint1), UPAction(:Waypoint2), UPAction(:End), UPAction(:Base1), UPAction(:Base2), UPAction(:Base3)]
+        self.actions = UPAction[]
+        for i = 1:self.sc.UAVs[1].nwaypoints
+            push!(self.actions, UPAction(symbol("waypoint" * string(i))))
+        end
+        push!(self.actions, UPAction(:end_))
+        for i = 1:length(self.sc.landing_bases)
+            push!(self.actions, UPAction(symbol("base" * string(i))))
         end
         self.nActions = length(self.actions)
 
@@ -258,26 +261,21 @@ function Generative(up::UTMPlannerV1, s::UPState, a::UPAction)
     uav_state = up.sc_state.UAVStates[1]
     uav_state.index = 1
     uav_state.status = s.status
-    uav_state.heading = s.heading
+    uav_state.heading = a.action
     uav_state.curr_loc = grid2coord(up, s.location)
-
-    if a.action != :None_
-        updateHeading(uav, uav_state, a.action)
-    end
 
     r = 0
 
     bMAC = false
 
+    bPassWaypoint = false
+    waypoint_passed = nothing
+
     htype, hindex, hloc = convertHeading(uav, uav_state.heading)
-    htype_prev = htype
-    hindex_prev = hindex
 
     for i = 1:up.dt
         if uav_state.status == :flying
-            if htype == :base
-                r += -1
-            end
+            r += -0.5
 
             if !bMAC
                 for k = 2:up.sc.nUAV
@@ -295,15 +293,22 @@ function Generative(up::UTMPlannerV1, s::UPState, a::UPAction)
 
         UAV_.updateState(uav, uav_state, t)
 
-        if uav_state.status == :flying
-            htype, hindex, hloc = convertHeading(uav, uav_state.heading)
+        htype_, hindex_, hloc_ = convertHeading(uav, uav_state.heading)
 
-            if (htype_prev == :waypoint && htype == :waypoint && hindex == hindex_prev + 1) || (htype_prev == :waypoint && htype == :end_)
+        if uav_state.status == :flying
+            if (htype == :waypoint && htype_ == :waypoint && hindex_ == hindex + 1) || (htype == :waypoint && htype_ == :end_)
                 r += 100
 
-                htype_prev = htype
-                hindex_prev = hindex
+                bPassWaypoint = true
+                waypoint_passed = symbol(string(htype) * string(hindex))
+
+                htype = htype_
+                hindex = hindex_
             end
+
+        elseif uav_state.status == :landed && htype_ == :end_
+            r += 100
+
         end
 
         t += up.sc.dt
@@ -319,7 +324,13 @@ function Generative(up::UTMPlannerV1, s::UPState, a::UPAction)
         r += -10000
     end
 
-    s_ = UPState(coord2grid(up, uav_state.curr_loc), uav_state.status, uav_state.heading, t)
+    if bPassWaypoint
+        last_ = waypoint_passed
+    else
+        last_ = s.last
+    end
+
+    s_ = UPState(coord2grid(up, uav_state.curr_loc), uav_state.status, last_, t)
 
     if up.sc.loc_err_sigma == 0
         o = UPObservation(s_.location)
@@ -340,17 +351,31 @@ function nextState(up::UTMPlannerV1, s::UPState, a::UPAction)
     uav_state = up.sc_state.UAVStates[1]
     uav_state.index = 1
     uav_state.status = s.status
-    uav_state.heading = s.heading
+    uav_state.heading = a.action
     uav_state.curr_loc = grid2coord(up, s.location)
 
-    if a.action != :None_
-        updateHeading(uav, uav_state, a.action)
-    end
+    bPassWaypoint = false
+
+    htype, hindex, hloc = convertHeading(uav, uav_state.heading)
 
     # XXX trajectory error caused by discretization
     UAV_.updateState(uav, uav_state, s.t)
 
-    s_ = UPState(coord2grid(up, uav_state.curr_loc), uav_state.status, uav_state.heading, s.t + up.sc.dt)
+    if uav_state.status == :flying
+        htype_, hindex_, hloc_ = convertHeading(uav, uav_state.heading)
+
+        if (htype == :waypoint && htype_ == :waypoint && hindex_ == hindex + 1) || (htype == :waypoint && htype_ == :end_)
+            bPassWaypoint = true
+        end
+    end
+
+    if bPassWaypoint
+        last_ = symbol(string(htype) * string(hindex))
+    else
+        last_ = s.last
+    end
+
+    s_ = UPState(coord2grid(up, uav_state.curr_loc), uav_state.status, last_, s.t + up.sc.dt)
 
     return s_
 end
@@ -379,7 +404,7 @@ function reward(up::UTMPlannerV1, s::UPState, a::UPAction, s_::UPAction)
     uav_state = up.sc_state.UAVStates[1]
     uav_state.index = 1
     uav_state.status = s.status
-    uav_state.heading = s.heading
+    uav_state.heading = a.action
     uav_state.curr_loc = grid2coord(up, s.location)
 
     r = 0
@@ -388,9 +413,7 @@ function reward(up::UTMPlannerV1, s::UPState, a::UPAction, s_::UPAction)
     htype_, hindex_, hloc_ = convertHeading(uav, s_.heading)
 
     if uav_state.status == :flying
-        if htype == :base
-            r += -1
-        end
+        r += -0.5
 
         for i = 2:up.sc.nUAV
             state__ = up.sc_state.UAVStates[i]
@@ -405,6 +428,10 @@ function reward(up::UTMPlannerV1, s::UPState, a::UPAction, s_::UPAction)
         if (htype == :waypoint && htype_ == :waypoint && hindex_ == hindex + 1) || (htype == :waypoint && htype_ == :end_)
             r += 100
         end
+
+    elseif uav_state.status == :landed && htype_ == :end_
+        r += 100
+
     end
 
     return r
@@ -419,7 +446,6 @@ function isEnd(up::UTMPlannerV1, s::UPState)
     uav_state = up.sc_state.UAVStates[1]
     uav_state.index = 1
     uav_state.status = s.status
-    uav_state.heading = s.heading
     uav_state.curr_loc = grid2coord(up, s.location)
 
     return UAV_.isEndState(uav, uav_state)
@@ -428,39 +454,17 @@ end
 
 function isFeasible(up::UTMPlannerV1, s::UPState, a::UPAction)
 
-    if a.action == :None_
-        return true
-    end
-
-    htype, hindex, hloc = convertHeading(up.sc.UAVs[1], s.heading)
     atype, aindex, aloc = convertHeading(up.sc.UAVs[1], a.action)
 
-    if htype == atype && hindex == aindex
-        return false
+    if atype == :waypoint && s.last != :none
+        ltype, lindex, lloc = convertHeading(up.sc.UAVs[1], s.last)
+
+        if aindex <= lindex
+            return false
+        end
     end
 
-    if htype == :waypoint
-        if atype == :waypoint
-            if aindex >= hindex
-                return true
-            end
-        else
-            return true
-        end
-
-    elseif htype == :base
-        if atype == :base
-            return true
-        end
-
-    elseif htype == :end_
-        if atype == :base || atype == :end_
-            return true
-        end
-
-    end
-
-    return false
+    return true
 end
 
 
@@ -492,22 +496,22 @@ end
 
 function isequal(s1::UPState, s2::UPState)
 
-    return isequal(s1.location, s2.location) && isequal(s1.status, s2.status) && isequal(s1.heading, s2.heading) && isequal(s1.t, s2.t)
+    return isequal(s1.location, s2.location) && isequal(s1.status, s2.status) && isequal(s1.last, s2.last) && isequal(s1.t, s2.t)
 end
 
 function ==(s1::UPState, s2::UPState)
 
-    return (s1.location == s2.location) && (s1.status == s2.status) && (s1.heading == s2.heading) && (s1.t == s2.t)
+    return (s1.location == s2.location) && (s1.status == s2.status) && (s1.last== s2.last) && (s1.t == s2.t)
 end
 
 function hash(s::UPState, h::UInt64 = zero(UInt64))
 
-    return hash(s.t, hash(s.heading, hash(s.status, hash(s.location, h))))
+    return hash(s.t, hash(s.last, hash(s.status, hash(s.location, h))))
 end
 
 function copy(s::UPState)
 
-    return UPState(s.location, s.status, s.heading, s.t)
+    return UPState(s.location, s.status, s.last, s.t)
 end
 
 
@@ -526,6 +530,11 @@ function hash(a::UPAction, h::UInt64 = zero(UInt64))
     return hash(a.action, h)
 end
 
+function copy(a::UPAction)
+
+    return UPAction(a.action)
+end
+
 
 function isequal(o1::UPObservation, o2::UPObservation)
 
@@ -540,6 +549,11 @@ end
 function hash(o::UPObservation, h::UInt64 = zero(UInt64))
 
     return hash(o.location, h)
+end
+
+function copy(o::UPObservation)
+
+    return UPObservation(o.location)
 end
 
 

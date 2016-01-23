@@ -89,7 +89,19 @@ function getInitialBelief(pm::UTMPlannerV1)
 
     B = UPState[]
 
-    push!(B, UPState(coord2grid(pm, pm.sc_state.UAVStates[1].curr_loc), pm.sc_state.UAVStates[1].status, pm.sc_state.UAVStates[1].heading, 0))
+    htype, hindex, hloc = convertHeading(pm.sc.UAVs[1], pm.sc_state.UAVStates[1].heading)
+
+    if htype == :waypoint
+        if hindex == 1
+            last_ = :none
+        else
+            last_ = symbol("waypoint" * string(hindex - 1))
+        end
+    elseif htype == :end_
+        last_ = symbol("waypoint" * string(pm.sc.UAVs[1].nwaypoints))
+    end
+
+    push!(B, UPState(coord2grid(pm, pm.sc_state.UAVStates[1].curr_loc), pm.sc_state.UAVStates[1].status, last_, 0))
 
     return UPBeliefParticles(B)
 end
@@ -97,7 +109,19 @@ end
 
 function getInitialState(pm::UTMPlannerV1)
 
-    return UPState(coord2grid(pm, pm.sc_state.UAVStates[1].curr_loc), pm.sc_state.UAVStates[1].status, pm.sc_state.UAVStates[1].heading, 0)
+    htype, hindex, hloc = convertHeading(pm.sc.UAVs[1], pm.sc_state.UAVStates[1].heading)
+
+    if htype == :waypoint
+        if hindex == 1
+            last_ = :none
+        else
+            last_ = symbol("waypoint" * string(hindex - 1))
+        end
+    elseif htype == :end_
+        last_ = symbol("waypoint" * string(pm.sc.UAVs[1].nwaypoints))
+    end
+
+    return UPState(coord2grid(pm, pm.sc_state.UAVStates[1].curr_loc), pm.sc_state.UAVStates[1].status, last_, 0)
 end
 
 
@@ -201,11 +225,11 @@ end
 
 function rollout_none(alg::POMCP, pm::UTMPlannerV1, s::UPState, h::History, d::Int64; rgamma::Float64 = 0.9, debug::Int64 = 0)
 
-    if d == 0 || isEnd(pm, s)
+    if d == 0 || isEnd(pm, s) || h.history == []
         return 0
     end
 
-    a = pm.actions[1]
+    a = h.history[end-1]
 
     s_, o, r = alg.Generative(pm, s, a)
 
@@ -215,26 +239,41 @@ end
 
 function rollout_refined(alg::POMCP, pm::UTMPlannerV1, s::UPState, h::History, d::Int64; rgamma::Float64 = 0.9, debug::Int64 = 0)
 
-    if isEnd(pm, s)
+    if h.history == []
+        return 0
+
+    elseif isEnd(pm, s)
         return 0
 
     elseif d == 0
+        r = 0
+
         uav = pm.sc.UAVs[1]
 
-        htype, hindex, hloc = convertHeading(uav, s.heading)
+        atype, aindex, aloc = convertHeading(uav, h.history[end-1].action)
 
-        if htype == :base
-            r = -round(Int64, ceil(norm(pm.sc.landing_bases[hindex] - grid2coord(pm, s.location)) / uav.velocity))
-        elseif htype == :waypoint
-            r = (uav.nwaypoints - hindex + 1) * 100 + 100
-        elseif htype == :end_
-            r = 100
+        if atype == :base
+            r += -round(Int64, ceil(norm(aloc - grid2coord(pm, s.location)) / uav.velocity))
+
+        elseif atype == :waypoint
+            r += -round(Int64, ceil(norm(aloc - grid2coord(pm, s.location)) / uav.velocity))
+            for i = aindex:uav.nwaypoints-1
+                r += -round(Int64, ceil(norm(uav.waypoints[i+1] - uav.waypoints[i]) / uav.velocity))
+            end
+            r += -round(Int64, ceil(norm(uav.end_loc - uav.waypoints[uav.nwaypoints]) / uav.velocity))
+            r += (uav.nwaypoints - aindex + 1) * 100 + 100
+
+        elseif atype == :end_
+            r += -round(Int64, ceil(norm(uav.end_loc - grid2coord(pm, s.location)) / uav.velocity))
+            r += 100
+
         end
 
         return r
+
     end
 
-    a = pm.actions[1]
+    a = h.history[end-1]
 
     s_, o, r = alg.Generative(pm, s, a)
 
@@ -246,9 +285,11 @@ function rollout_inf(alg::POMCP, pm::UTMPlannerV1, s::UPState, h::History, d::In
 
     q = 0.
 
+    a = h.history[end-1]
+
     i = 0
     while !isEnd(pm, s)
-        s_, o, r = alg.Generative(pm, s, pm.actions[1])
+        s_, o, r = alg.Generative(pm, s, a)
         q += rgamma^i * r
         i += 1
         s = s_
@@ -297,7 +338,7 @@ function CE_rollout_policy_(pm::UTMPlannerV1, s::UPState, param::Vector{Float64}
     while true
         a, prob = rand_action(pm, param)
 
-        if isFeasible(pm, s, a) || a.action == s.heading
+        if isFeasible(pm, s, a)
             return a
         end
     end
@@ -313,28 +354,21 @@ function rollout_CE(alg::POMCP, pm::UTMPlannerV1, s::UPState, h::History, d::Int
     end
 
     a = CE_rollout_policy(alg.CE_dist_param)(pm, s)
-    @assert a.action != :None_
 
     if debug > 2
         print(string(a), ", ")
     end
 
-    if a.action == s.heading
-        a_ = pm.actions[1]
-    else
-        a_ = a
-    end
+    @assert isFeasible(pm, s, a)
 
-    @assert isFeasible(pm, s, a_)
-
-    s_, o, r = alg.Generative(pm, s, a_)
+    s_, o, r = alg.Generative(pm, s, a)
 
     if isEnd(pm, s_)
         push!(alg.CE_samples, (a, r))
         return r
     end
 
-    q = r + rgamma * rollout_none(alg, pm, s_, History([h.history; a_; o]), d - 1, rgamma = rgamma)
+    q = r + rgamma * rollout_none(alg, pm, s_, History([h.history; a; o]), d - 1, rgamma = rgamma)
 
     push!(alg.CE_samples, (a, r))
 
@@ -482,23 +516,38 @@ function rollout_MS(alg::POMCP, pm::UTMPlannerV1, s::UPState, h::History, d::Int
 
     @test MSState != nothing
 
-    if isEnd(pm, s)
+    if h.history == []
+        return 0
+
+    elseif isEnd(pm, s)
         return 0
 
     elseif d == 0
+        r = 0
+
         uav = pm.sc.UAVs[1]
 
-        htype, hindex, hloc = convertHeading(uav, s.heading)
+        atype, aindex, aloc = convertHeading(uav, h.history[end-1].action)
 
-        if htype == :base
-            r = -round(Int64, ceil(norm(pm.sc.landing_bases[hindex] - grid2coord(pm, s.location)) / uav.velocity))
-        elseif htype == :waypoint
-            r = (uav.nwaypoints - hindex + 1) * 100 + 100
-        elseif htype == :end_
-            r = 100
+        if atype == :base
+            r += -round(Int64, ceil(norm(aloc - grid2coord(pm, s.location)) / uav.velocity))
+
+        elseif atype == :waypoint
+            r += -round(Int64, ceil(norm(aloc - grid2coord(pm, s.location)) / uav.velocity))
+            for i = aindex:uav.nwaypoints-1
+                r += -round(Int64, ceil(norm(uav.waypoints[i+1] - uav.waypoints[i]) / uav.velocity))
+            end
+            r += -round(Int64, ceil(norm(uav.end_loc - uav.waypoints[uav.nwaypoints]) / uav.velocity))
+            r += (uav.nwaypoints - aindex + 1) * 100 + 100
+
+        elseif atype == :end_
+            r += -round(Int64, ceil(norm(uav.end_loc - grid2coord(pm, s.location)) / uav.velocity))
+            r += 100
+
         end
 
         return r
+
     end
 
     n = 1
@@ -524,7 +573,7 @@ function rollout_MS(alg::POMCP, pm::UTMPlannerV1, s::UPState, h::History, d::Int
         end
     end
 
-    a = pm.actions[1]
+    a = h.history[end-1]
 
     q_ = 0.
 
@@ -540,7 +589,7 @@ function rollout_MS(alg::POMCP, pm::UTMPlannerV1, s::UPState, h::History, d::Int
 end
 
 
-function simulate(pm, alg; draw::Bool = false, wait::Bool = false, bSeq::Bool = true, ts::Int64 = 0, action::Symbol = :None_, bStat::Bool = false, debug::Int64 = 0)
+function simulate(pm, alg; draw::Bool = false, wait::Bool = false, bSeq::Bool = true, ts::Int64 = 0, action::Symbol = :waypoint1, bStat::Bool = false, debug::Int64 = 0)
 
     sc = pm.sc
     sc_state = pm.sc_state
@@ -569,7 +618,8 @@ function simulate(pm, alg; draw::Bool = false, wait::Bool = false, bSeq::Bool = 
         updateAnimation(upv)
     end
 
-    while s.t < length(pm.UAVStates)
+    #while s.t < length(pm.UAVStates)
+    while true
         if bSeq
             #println("T: ", alg.T)
             #println("Ns: ", alg.Ns)
@@ -621,10 +671,6 @@ function simulate(pm, alg; draw::Bool = false, wait::Bool = false, bSeq::Bool = 
             end
             a = actions[rand(1:length(actions))]
 
-            if a.action == s.heading
-                a = UPAction(:None_)
-            end
-
             if alg.rollout_type == :CE_worst || alg.rollout_type == :CE_best
                 if length(alg.CE_samples) != 0
                     CE_rollout_policy_param = updateRolloutPolicyForCE(pm, alg, CE_rollout_policy_param)
@@ -649,7 +695,7 @@ function simulate(pm, alg; draw::Bool = false, wait::Bool = false, bSeq::Bool = 
             end
 
         else
-            a = UPAction(:None_)
+            a = UPAction(:waypoint1)
 
             if s.t == ts
                 a = UPAction(action)
@@ -679,7 +725,7 @@ function simulate(pm, alg; draw::Bool = false, wait::Bool = false, bSeq::Bool = 
                 end
             end
 
-            println("ts: ", s.t, ", s: ", grid2coord(pm, s.location), " ", s.status, " ", s.heading, ", Q: ", neat(Q__), ", a: ", string(a), ", o: ", grid2coord(pm, o.location), ", r: ", neat(r), ", R: ", neat(R), ", s_: ", grid2coord(pm, s_.location), " ", s_.status, " ", s_.heading)
+            println("ts: ", s.t, ", s: ", grid2coord(pm, s.location), " ", s.status, " ", s.last, ", Q: ", neat(Q__), ", a: ", string(a), ", o: ", grid2coord(pm, o.location), ", r: ", neat(r), ", R: ", neat(R), ", s_: ", grid2coord(pm, s_.location), " ", s_.status, " ", s_.last)
         end
 
         if draw
@@ -714,7 +760,7 @@ function simulate(pm, alg; draw::Bool = false, wait::Bool = false, bSeq::Bool = 
             end
 
             if length(particles) == 0
-                push!(particles, UPState(o.location, s_.status, s_.heading, s_.t))
+                push!(particles, UPState(o.location, s_.status, s_.last, s_.t))
             end
 
             # add particles
@@ -723,13 +769,24 @@ function simulate(pm, alg; draw::Bool = false, wait::Bool = false, bSeq::Bool = 
 
                 for i = 1:10
                     s__ = particles[rand(1:length(particles))]
-                    push!(particles_, UPState(coord2grid(pm, rand(MvNormal(grid2coord(pm, s__.location), pm.sc.loc_err_sigma))), s__.status, s__.heading, s__.t))
+                    push!(particles_, UPState(coord2grid(pm, rand(MvNormal(grid2coord(pm, s__.location), pm.sc.loc_err_sigma))), s__.status, s__.last, s__.t))
                 end
 
                 append!(particles, particles_)
             end
 
             b = updateBelief(pm, UPBeliefParticles(particles))
+
+            min_dist = Inf
+            min_obs = nothing
+            for o__ in alg.Os[(History(), a)]
+                dist = norm([o__.location[1] - o.location[1], o__.location[2] - o.location[2]])
+                if dist < min_dist
+                    min_dist = dist
+                    min_obs = o__
+                end
+            end
+            o = min_obs
 
             reinitialize(alg, a, o)
         end
@@ -743,7 +800,7 @@ function simulate(pm, alg; draw::Bool = false, wait::Bool = false, bSeq::Bool = 
 end
 
 
-function evalScenario(scenario_number::Union{Int64, Void} = nothing; N::Int64 = 100, RE_threshold::Float64 = 0.1, up_seed::Int64 = nothing, mcts_seed = nothing, bSeq::Bool = true, depth::Int64 = 5, nloop_min::Int64 = 100, nloop_max::Int64 = 1000, runtime_max::Float64 = 0., ts::Int64 = 0, action::Symbol = :None_, tree_policy = nothing, rollout::Union{Tuple{Symbol, Function}, Void} = nothing, Scenarios = nothing, debug::Int64 = 0)
+function evalScenario(scenario_number::Union{Int64, Void} = nothing; N::Int64 = 100, RE_threshold::Float64 = 0.1, up_seed::Int64 = nothing, mcts_seed = nothing, bSeq::Bool = true, depth::Int64 = 5, nloop_min::Int64 = 100, nloop_max::Int64 = 1000, runtime_max::Float64 = 0., ts::Int64 = 0, action::Symbol = :waypoint1, tree_policy = nothing, rollout::Union{Tuple{Symbol, Function}, Void} = nothing, Scenarios = nothing, debug::Int64 = 0)
 
     X = Float64[]
 
@@ -821,7 +878,8 @@ function runExp(scenario::Int64, up_seed::Union{Int64, Vector{Int64}}, mcts_seed
     if bMS
         rollout = (:MS, rollout_MS)
     else
-        rollout = (:refined, rollout_refined)
+        #rollout = (:refined, rollout_refined)
+        rollout = nothing
     end
 
     opt_return = nothing
@@ -953,23 +1011,23 @@ function runExpBatch(; bParallel::Bool = false, bAppend::Bool = false)
     MS = Dict("type" => :MS, "L" => [500., 200.], "N" => [2, 2])
 
     tree_policies = Any[
-        #Any[sparse, Dict("type" => :UCB1, "c" => 100)],
-        #Any[sparse, Dict("type" => :UCB1, "c" => 10000)],
-        #Any[sparse, Dict("type" => :TS)],
+        Any[sparse, Dict("type" => :UCB1, "c" => 300)],
+        Any[sparse, Dict("type" => :UCB1, "c" => 10000)],
+        Any[sparse, Dict("type" => :TS)],
         Any[sparse, Dict("type" => :TSM, "ARM" => () -> ArmRewardModel(0.01, 0.01, -100., 1., 1 / 2, 1 / (2 * (1 / 10. ^ 2)), -5000., -10000., 1., 1 / 2,  1 / (2 * (1 / 1.^2))))],
-        Any[sparse, Dict("type" => :AUCB, "SP" => [Dict("type" => :UCB1, "c" => 100), Dict("type" => :UCB1, "c" => 10000)])],
+        Any[sparse, Dict("type" => :AUCB, "SP" => [Dict("type" => :UCB1, "c" => 300), Dict("type" => :UCB1, "c" => 10000)])],
         #Any[sparse, Dict("type" => :UCB1, "c" => 10000), Dict("type" => :MS, "L" => [500.], "N" => [2])],
         #Any[sparse, Dict("type" => :UCB1, "c" => 10000), Dict("type" => :MS, "L" => [500.], "N" => [4])],
         #Any[sparse, Dict("type" => :UCB1, "c" => 10000), Dict("type" => :MS, "L" => [500., 200.], "N" => [2, 2])]
-        Any[sparse, Dict("type" => :TSM, "ARM" => () -> ArmRewardModel(0.01, 0.01, -100., 1., 1 / 2, 1 / (2 * (1 / 10. ^ 2)), -5000., -10000., 1., 1 / 2,  1 / (2 * (1 / 1.^2)))), MS],
-        Any[sparse, Dict("type" => :AUCB, "SP" => [Dict("type" => :UCB1, "c" => 100), Dict("type" => :UCB1, "c" => 10000)]), MS],
+        #Any[sparse, Dict("type" => :TSM, "ARM" => () -> ArmRewardModel(0.01, 0.01, -100., 1., 1 / 2, 1 / (2 * (1 / 10. ^ 2)), -5000., -10000., 1., 1 / 2,  1 / (2 * (1 / 1.^2)))), MS],
+        #Any[sparse, Dict("type" => :AUCB, "SP" => [Dict("type" => :UCB1, "c" => 300), Dict("type" => :UCB1, "c" => 10000)]), MS],
     ]
 
     depth = 5
 
     nloop_min = 1000
     nloop_max = 1000
-    runtime_max = 1.
+    runtime_max = 0.
 
     N = 100
 
@@ -990,7 +1048,7 @@ end
 
 if false
     srand(12)
-    sn_list = unique(rand(1024:typemax(Int16), 1100))[1:10]
+    sn_list = unique(rand(1025:typemax(Int16), 1100))[1:10]
 
     println("scenarios: ", sn_list)
     #generateScenario(sn_list, bSave = true)
@@ -1021,7 +1079,7 @@ end
 
 
 if false
-    #scenario_number = nothing
+    #scenario_number = rand(1025:typemax(Int16))
     scenario_number = 1
 
     up_seed = round(Int64, time())
@@ -1029,7 +1087,7 @@ if false
 
     println("scenario: ", scenario_number, ", seed: ", up_seed, ", ", mcts_seed)
 
-    depth = 5
+    depth = 10
 
     nloop_min = 1000
     nloop_max = 1000
@@ -1040,15 +1098,15 @@ if false
     MS = Dict("type" => :MS, "L" => [500., 200.], "N" => [2, 2])
 
     #tree_policy = nothing
-    #tree_policy = Any[sparse, Dict("type" => :UCB1, "c" => 100)]
-    tree_policy = Any[sparse, Dict("type" => :UCB1, "c" => 10000)]
+    tree_policy = Any[sparse, Dict("type" => :UCB1, "c" => 300)]
+    #tree_policy = Any[sparse, Dict("type" => :UCB1, "c" => 10000)]
     #tree_policy = Any[sparse, Dict("type" => :TS)]
     #tree_policy = Any[sparse, Dict("type" => :TSM, "ARM" => () -> ArmRewardModel(0.01, 0.01, -100., 1., 1 / 2, 1 / (2 * (1 / 10. ^ 2)), -5000., -10000., 1., 1 / 2,  1 / (2 * (1 / 1.^2))))]
-    #tree_policy = Any[sparse, Dict("type" => :AUCB, "SP" => [Dict("type" => :UCB1, "c" => 100), Dict("type" => :UCB1, "c" => 10000)])]
+    #tree_policy = Any[sparse, Dict("type" => :AUCB, "SP" => [Dict("type" => :UCB1, "c" => 300), Dict("type" => :UCB1, "c" => 10000)])]
 
     # :default, :MC, :inf, :once, :CE_worst, :CE_best, :MS
-    #rollout = nothing
-    rollout = (:refined, rollout_refined)
+    rollout = nothing
+    #rollout = (:refined, rollout_refined)
     #rollout = (:MS, rollout_MS)
 
     debug = 2
@@ -1059,7 +1117,7 @@ if false
     alg = POMCP(seed = mcts_seed, depth = depth, nloop_min = nloop_min, nloop_max = nloop_max, runtime_max = runtime_max, gamma_ = 0.9, tree_policy = tree_policy, rollout = rollout, visualizer = MCTSVisualizer())
 
     #test(pm, alg)
-    #simulate(pm, nothing, draw = true, wait = false, ts = 0, action = :None_)
+    #simulate(pm, nothing, draw = true, wait = false, ts = 0, action = :waypoint1)
     simulate(pm, alg, draw = true, wait = false, bSeq = true, bStat = false, debug = debug)
 end
 
@@ -1067,7 +1125,7 @@ end
 function Experiment01()
 
     srand(round(Int64, time()))
-    sn_list = unique(rand(1024:typemax(Int16), 1100))[1:10]
+    sn_list = unique(rand(1025:typemax(Int16), 1100))[1:10]
 
     N = 100
     nloop_min = 100
@@ -1110,7 +1168,7 @@ function Experiment02()
     srand(seed)
 
     #sn_list = 1
-    sn_list = unique(rand(1024:typemax(Int16), 1100))[1:100]
+    sn_list = unique(rand(1025:typemax(Int16), 1100))[1:100]
 
     N = 100
     RE_threshold = 0.01

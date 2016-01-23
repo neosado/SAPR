@@ -7,7 +7,7 @@ VERSION >= v"0.4" && __precompile__(false)
 # Partially Observable Markov Decision Process
 module POMDP_
 
-import Base: isequal, ==, hash
+import Base: isequal, ==, hash, copy, string
 
 export POMDP, State, Action, Observation, Belief, History
 export nextState, observe, reward, Generative, isEnd, isFeasible, sampleBelief, updateBelief
@@ -41,6 +41,7 @@ type History
     function History(history = [])
 
         self = new()
+
         self.history = history
 
         return self
@@ -74,6 +75,28 @@ function hash(hist::History, h::UInt64 = zero(UInt64))
     end
 
     return h
+end
+
+function copy(h::History)
+
+    return History(h.history)
+end
+
+function string(h::History)
+
+    if h.history == []
+        return "[]"
+
+    else
+        str = "["
+        for i = 1:div(length(h.history), 2)
+            str *= string(h.history[2*i-1]) * "," * string(h.history[2*i]) * ","
+        end
+        str = str[1:end-1] * "]"
+
+        return str
+
+    end
 end
 
 

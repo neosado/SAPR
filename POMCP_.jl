@@ -359,12 +359,22 @@ function simulate(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64; MSState
             println("    hit end")
         end
 
+        if d == 0
+            ro = alg.rollout_func(alg, pm, s, h, d, debug = debug)
+
+            if debug > 2
+                println("    rollout: ", neat(ro * pm.reward_norm_const))
+            end
+
+            return ro
+        end
+
         return 0
     end
 
     if !haskey(alg.T, h)
         if debug > 2
-            println("    new node: ", h, " at level ", d)
+            println("    new node: ", string(h), " at level ", d)
         end
 
         for a in pm.actions
@@ -412,7 +422,7 @@ function simulate(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64; MSState
     end
 
     if debug > 2
-        println("    found node: ", h, " at level ", d)
+        println("    found node: ", string(h), " at level ", d)
     end
 
     Q = Array(Float64, pm.nActions)
@@ -535,7 +545,7 @@ function simulate(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64; MSState
         end
 
         if debug > 2
-            println("    Q: ", neat(Q * pm.reward_norm_const), ", Qv: ", neat(Qv), ", a: ", a, ", s_: ", s_, ", o: ", o, ", r: ", neat(r * pm.reward_norm_const))
+            println("    Q: ", neat(Q * pm.reward_norm_const), ", Qv: ", neat(Qv), ", a: ", string(a), ", s_: ", string(s_), ", o: ", string(o), ", r: ", neat(r * pm.reward_norm_const))
             if k == n
                 if debug > 3
                     Na = zeros(Int64, pm.nActions)
@@ -630,7 +640,7 @@ function selectAction(alg::POMCP, pm::POMDP, b::Belief; bStat::Bool = false, deb
         s = sampleBelief(pm, b)
 
         if debug > 2
-            println("  sample: ", s)
+            println("  sample: ", string(s))
         end
 
         if !bStat

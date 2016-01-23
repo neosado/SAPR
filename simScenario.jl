@@ -229,7 +229,7 @@ if false
 
     sc, sc_state = generateScenario("v0.1", uav_indexes = 1, navigations = :nav1)
 
-    simulate(sc, sc_state, draw = true, wait = false, uav_indexes = 1, headings = :Waypoint1)
+    simulate(sc, sc_state, draw = true, wait = false, uav_indexes = 1, headings = :waypoint1)
 end
 
 
@@ -246,7 +246,7 @@ if false
     while true
         sc, sc_state = generateScenario("v0.1", uav_indexes = 1, navigations = :nav1)
 
-        x = simulate(sc, sc_state, uav_indexes = 1, headings = :Waypoint1)
+        x = simulate(sc, sc_state, uav_indexes = 1, headings = :waypoint1)
         y += (x - y) / n
         push!(va, y)
         

@@ -91,9 +91,9 @@ function generateScenarioWithParams(params::UTMScenarioParams, UAVInfo; navigati
             push!(sc_state.UAVStates[i].past_locs, curr_loc)
 
             if heading == sc.UAVs[i].nwaypoints + 2
-                sc_state.UAVStates[i].heading = symbol("End")
+                sc_state.UAVStates[i].heading = symbol("end")
             else
-                sc_state.UAVStates[i].heading = symbol("Waypoint" * string(heading - 1))
+                sc_state.UAVStates[i].heading = symbol("waypoint" * string(heading - 1))
             end
         end
     end
@@ -187,7 +187,7 @@ function generateBases(rng::AbstractRNG; x::Float64 = 0., y::Float64 = 0., margi
 end
 
 
-function generateUAV(rng::AbstractRNG; x::Float64 = 0., y::Float64 = 0., margin::Float64 = 0., dist_mean::Float64 = 0., dist_noise::Float64 = 0., angle_noise::Float64 = 0., v_mean::Float64 = 0., v_min::Float64 = 0., v_max::Float64 = 0.)
+function generateUAV(rng::AbstractRNG; x::Float64 = 0., y::Float64 = 0., nroutes::Int64 = 0., margin::Float64 = 0., dist_mean::Float64 = 0., dist_noise::Float64 = 0., angle_noise::Float64 = 0., v_mean::Float64 = 0., v_min::Float64 = 0., v_max::Float64 = 0.)
 
     start_side = randi(rng, 1:4)
 
@@ -253,6 +253,10 @@ function generateUAV(rng::AbstractRNG; x::Float64 = 0., y::Float64 = 0., margin:
 
             push!(route, next_loc)
 
+            if nroutes != 0 && length(route) == nroutes
+                break
+            end
+
             if checkLocationInside(x, y, next_loc)
                 bInside = true
             end
@@ -260,8 +264,14 @@ function generateUAV(rng::AbstractRNG; x::Float64 = 0., y::Float64 = 0., margin:
             curr_loc = next_loc
         end
 
-        if bInside
-            break
+        if nroutes != 0
+            if bInside && length(route) == nroutes && checkLocationInside(x, y, route[end])
+                break
+            end
+        else
+            if bInside
+                break
+            end
         end
     end
 
@@ -427,9 +437,11 @@ function generateScenario_(seed::Int64)
 
     # parameters for generating scenario
     nUAV = 5
+    route_points_1 = 4
     min_route_points = 4
+    rindex_noise_1 = 0
     rindex_noise = 2
-    nNearbyUAV = 2
+    nNearbyUAV = 1
     sep_dist_margin = 20.
     sep_dist_margin_noise = 5.
     minimum_mid_route_length = 3000.
@@ -448,23 +460,37 @@ function generateScenario_(seed::Int64)
         while nTry < nMaxTry
             nTry += 1
 
-            uav_info = generateUAV(rng, x = params.x, y = params.y, margin = 100., dist_mean = 1500., dist_noise = 0.3, angle_noise = 45., v_mean = 40., v_min = 20., v_max = 60.)
+            if i == 1
+                nroutes = route_points_1
+            else
+                nroutes = 0
+            end
+
+            uav_info = generateUAV(rng, x = params.x, y = params.y, nroutes = nroutes, margin = 100., dist_mean = 1500., dist_noise = 0.3, angle_noise = 45., v_mean = 40., v_min = 20., v_max = 60.)
 
             route = uav_info["route"]
 
-            if length(route) < min_route_points
-                continue
+            if nroutes == 0
+                if length(route) < min_route_points
+                    continue
+                end
+
+                mid_route_length = 0.
+                for j = 2:length(route)-2
+                    mid_route_length += norm(route[j+1] - route[j])
+                end
+                if mid_route_length < minimum_mid_route_length
+                    continue
+                end
             end
 
-            mid_route_length = 0.
-            for j = 2:length(route)-2
-                mid_route_length += norm(route[j+1] - route[j])
-            end
-            if mid_route_length < minimum_mid_route_length
-                continue
+            if i == 1
+                rindex_noise_ = rindex_noise_1
+            else
+                rindex_noise_ = rindex_noise
             end
 
-            curr_loc, heading = getInitLocation(rng, params, route, rindex_noise)
+            curr_loc, heading = getInitLocation(rng, params, route, rindex_noise_)
 
             if i == 1
                 push!(UAVInfo, Dict{ASCIIString, Any}("uav_info" => uav_info, "uav_state" => Dict{ASCIIString, Any}("heading" => heading, "curr_loc" => curr_loc)))

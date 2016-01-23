@@ -394,11 +394,9 @@ function coloring_up_node(d) {
         style = "fill: purple"
         children = d.actions
     } else if (d.action) {
-        if (d.action.substr(0, 5) == "None_") {
-            style = "stroke: blue"
-        } else if (d.action.substr(0, 8) == "Waypoint" || d.action == "End") {
+        if (d.action.substr(0, 8) == "waypoint" || d.action == "end_") {
             style = "stroke: olive"
-        } else if (d.action.substr(0, 4) == "Base") {
+        } else if (d.action.substr(0, 4) == "base") {
             style = "stroke: orange"
         }
         children = d.observations
