@@ -294,7 +294,7 @@ end
 
 function rollout_default(alg::POMCP, pm::POMDP, s::State, h::History, d::Int64; rgamma::Float64 = 0.9, debug::Int64 = 0)
 
-    if d == 0 || isEnd(pm, s)
+    if d == 0 || isEnd(pm, s) || h.history == []
         return 0
     end
 

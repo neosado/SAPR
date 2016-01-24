@@ -195,7 +195,7 @@ end
 
 function rollout_default(alg::POMCP, pm::UTMPlannerV1, s::UPState, h::History, d::Int64; rgamma::Float64 = 0.9, debug::Int64 = 0)
 
-    if d == 0 || isEnd(pm, s)
+    if d == 0 || isEnd(pm, s) || h.history == []
         return 0
     end
 
@@ -513,6 +513,54 @@ end
 
 
 function rollout_MS(alg::POMCP, pm::UTMPlannerV1, s::UPState, h::History, d::Int64; MSState::Union{Dict{ASCIIString, Any}, Void} = nothing, rgamma::Float64 = 0.9, debug::Int64 = 0)
+
+    @test MSState != nothing
+
+    if d == 0 || isEnd(pm, s) || h.history == []
+        return 0
+    end
+
+    n = 1
+
+    loc = [pm.cell_len / 2 + (s.location[1] - 1) * pm.cell_len, pm.cell_len / 2 + (s.location[2] - 1) * pm.cell_len]
+
+    for i = 2:pm.sc.nUAV
+        # XXX replicate once when hitting a level first time
+        if MSState["level"][i] < length(alg.tree_policy.ms_L) + 1
+            loc_ = pm.sc_state.UAVStates[i].curr_loc
+
+            if norm(loc - loc_) < alg.tree_policy.ms_L[MSState["level"][i]]
+                if debug > 2
+                    println("    UAV 1 ", loc, " and UAV ", i, " ", neat(loc_), " hit the MS level ", MSState["level"][i], " at level ", d)
+                end
+
+                if alg.tree_policy.ms_N[MSState["level"][i]] > n
+                    n = alg.tree_policy.ms_N[MSState["level"][i]]
+                end
+
+                MSState["level"][i] += 1
+            end
+        end
+    end
+
+    #a = h.history[end-1]
+    a = default_policy(pm, s)
+
+    q_ = 0.
+
+    for k = 1:n
+        s_, o, r = alg.Generative(pm, s, a)
+
+        q = r + rgamma * rollout_MS(alg, pm, s_, History([h.history; a; o]), d - 1, MSState = deepcopy(MSState), rgamma = rgamma, debug = debug)
+
+        q_ += (q - q_) / k
+    end
+
+    return q_
+end
+
+
+function rollout_MS_refined(alg::POMCP, pm::UTMPlannerV1, s::UPState, h::History, d::Int64; MSState::Union{Dict{ASCIIString, Any}, Void} = nothing, rgamma::Float64 = 0.9, debug::Int64 = 0)
 
     @test MSState != nothing
 
@@ -876,6 +924,7 @@ function runExp(scenario::Int64, up_seed::Union{Int64, Vector{Int64}}, mcts_seed
     end
 
     if bMS
+        #rollout = (:MS, rollout_MS_refined)
         rollout = (:MS, rollout_MS)
     else
         #rollout = (:refined, rollout_refined)
@@ -1108,6 +1157,7 @@ if false
     rollout = nothing
     #rollout = (:refined, rollout_refined)
     #rollout = (:MS, rollout_MS)
+    #rollout = (:MS, rollout_MS_refined)
 
     debug = 2
 
