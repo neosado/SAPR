@@ -531,7 +531,7 @@ function rollout_MS(alg::POMCP, pm::UTMPlannerV1, s::UPState, h::History, d::Int
 
             if norm(loc - loc_) < alg.tree_policy.ms_L[MSState["level"][i]]
                 if debug > 2
-                    println("    UAV 1 ", loc, " and UAV ", i, " ", neat(loc_), " hit the MS level ", MSState["level"][i], " at level ", d)
+                    println("    UAV 1 ", loc, " and UAV ", i, " ", neat(loc_), " hit the MS level ", MSState["level"][i], " at ro level ", d)
                 end
 
                 if alg.tree_policy.ms_N[MSState["level"][i]] > n
