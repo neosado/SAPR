@@ -1072,7 +1072,7 @@ function runExpBatch(; bParallel::Bool = false, bAppend::Bool = false)
         #Any[sparse, Dict("type" => :AUCB, "SP" => [Dict("type" => :UCB1, "c" => 300), Dict("type" => :UCB1, "c" => 10000)]), MS],
     ]
 
-    depth = 5
+    depth = 10
 
     nloop_min = 1000
     nloop_max = 1000
