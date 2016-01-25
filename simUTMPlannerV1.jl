@@ -903,6 +903,10 @@ function evalScenario(scenario::Int64, N::Int64, up_seed::Union{Int64, Vector{In
         end
     end
 
+    if debug > 1
+        println(X)
+    end
+
     if debug > 0
         println("n: ", n, ", mean: ", neat(meanX), ", std: ", neat(sqrt(varX)), ", RE: ", neat(RE))
     end
