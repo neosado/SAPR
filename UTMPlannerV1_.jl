@@ -130,7 +130,7 @@ type UTMPlannerV1 <: POMDP
     reward_norm_const::Float64
 
 
-    function UTMPlannerV1(; seed::Union{Int64, Void} = nothing, scenario_number::Union{Int64, Void} = nothing, Scenarios = nothing)
+    function UTMPlannerV1(; seed::Union{Int64, Void} = nothing, scenario::Union{Int64, Void} = nothing, Scenarios = nothing)
 
         self = new()
 
@@ -143,7 +143,7 @@ type UTMPlannerV1 <: POMDP
         # Note: can't create rng since Distributions.jl does not support rng argument in its rand()
         srand(self.seed)
 
-        self.sc, self.sc_state, self.UAVStates, _ = generateScenario(scenario_number, navigation = :nav1, Scenarios = Scenarios)
+        self.sc, self.sc_state, self.UAVStates, _ = generateScenario(scenario, navigation = :nav1, Scenarios = Scenarios)
 
         self.dt = 5
 

@@ -869,7 +869,7 @@ function evalScenario(scenario::Int64, N::Int64, up_seed::Union{Int64, Vector{In
             print(i, " ", up_seed[i], " ", mcts_seed[i], " ")
         end
 
-        pm = UTMPlannerV1(seed = up_seed[i], scenario_number = scenario, Scenarios = Scenarios)
+        pm = UTMPlannerV1(seed = up_seed[i], scenario = scenario, Scenarios = Scenarios)
 
         if !bSeq
             x = simulate(pm, nothing, bSeq = false, ts = ts, action = action)
@@ -942,7 +942,7 @@ function runExp(scenario::Int64, up_seed::Union{Int64, Vector{Int64}}, mcts_seed
     returns = zeros(N)
 
     for i = 1:N
-        pm = UTMPlannerV1(seed = up_seed[i], scenario_number = scenario)
+        pm = UTMPlannerV1(seed = up_seed[i], scenario = scenario)
 
         if i == 1
             opt_return = (pm.sc.UAVs[1].nwaypoints + 1) * 100
@@ -1104,13 +1104,13 @@ end
 
 if false
     srand(12)
-    sn_list = unique(rand(1025:typemax(Int16), 1100))[1:10]
+    scenarios = unique(rand(1025:typemax(Int16), 1100))[1:10]
 
-    println("scenarios: ", sn_list)
-    #generateScenario(sn_list, bSave = true)
+    println("scenarios: ", scenarios)
+    #generateScenario(scenarios, bSave = true)
 
     Scenarios = loadScenarios()
-    simulateScenario(sn_list, draw = true, wait = false, bSim = false, Scenarios = Scenarios)
+    simulateScenario(scenarios, draw = true, wait = false, bSim = false, Scenarios = Scenarios)
 end
 
 
@@ -1135,13 +1135,13 @@ end
 
 
 if false
-    #scenario_number = rand(1025:typemax(Int16))
-    scenario_number = 1
+    #scenario = rand(1025:typemax(Int16))
+    scenario = 1
 
     up_seed = round(Int64, time())
     mcts_seed = round(Int64, time()) + 1
 
-    println("scenario: ", scenario_number, ", seed: ", up_seed, ", ", mcts_seed)
+    println("scenario: ", scenario, ", seed: ", up_seed, ", ", mcts_seed)
 
     depth = 10
 
@@ -1154,8 +1154,8 @@ if false
     MS = Dict("type" => :MS, "L" => [500., 200.], "N" => [2, 2])
 
     #tree_policy = nothing
-    tree_policy = Any[sparse_, Dict("type" => :UCB1, "c" => 300)]
-    #tree_policy = Any[sparse_, Dict("type" => :UCB1, "c" => 10000)]
+    #tree_policy = Any[sparse_, Dict("type" => :UCB1, "c" => 300)]
+    tree_policy = Any[sparse_, Dict("type" => :UCB1, "c" => 10000)]
     #tree_policy = Any[sparse_, Dict("type" => :TS)]
     #tree_policy = Any[sparse_, Dict("type" => :TSM, "ARM" => () -> ArmRewardModel(0.01, 0.01, -100., 1., 1 / 2, 1 / (2 * (1 / 10. ^ 2)), -5000., -10000., 1., 1 / 2,  1 / (2 * (1 / 1.^2))))]
     #tree_policy = Any[sparse_, Dict("type" => :AUCB, "SP" => [Dict("type" => :UCB1, "c" => 300), Dict("type" => :UCB1, "c" => 10000)])]
@@ -1169,7 +1169,7 @@ if false
     debug = 2
 
 
-    pm = UTMPlannerV1(seed = up_seed, scenario_number = scenario_number)
+    pm = UTMPlannerV1(seed = up_seed, scenario = scenario)
 
     alg = POMCP(seed = mcts_seed, depth = depth, nloop_min = nloop_min, nloop_max = nloop_max, runtime_max = runtime_max, gamma_ = 0.9, tree_policy = tree_policy, rollout = rollout, visualizer = MCTSVisualizer())
 

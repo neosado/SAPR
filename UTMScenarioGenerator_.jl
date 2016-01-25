@@ -584,7 +584,7 @@ function generateScenario_(seed::Int64)
 end
 
 
-function generateScenario(scenario_number::Union{Int64, Vector{Int64}, Void} = nothing; draw::Bool = false, wait::Bool = false, bSave::Bool = false, bAppend::Bool = true, navigation::Symbol = :GPS_INS, Scenarios = nothing)
+function generateScenario(scenarios::Union{Int64, Vector{Int64}, Void} = nothing; draw::Bool = false, wait::Bool = false, bSave::Bool = false, bAppend::Bool = true, navigation::Symbol = :GPS_INS, Scenarios = nothing)
 
     if Scenarios == nothing
         if isfile("Scenarios.jld")
@@ -600,18 +600,18 @@ function generateScenario(scenario_number::Union{Int64, Vector{Int64}, Void} = n
         Scenarios = Dict()
     end
 
-    if scenario_number == nothing
-        scenario_number = rand(1025:typemax(Int16))
+    if scenarios == nothing
+        scenarios = rand(1025:typemax(Int16))
     end
 
     bNewScenario = false
 
-    for sn in scenario_number
-        #println("scenario: ", sn)
+    for scenario in scenarios
+        #println("scenario: ", scenario)
 
-        if !haskey(Scenarios, sn)
-            if sn <= 1024
-                sc, sc_state, UAVInfo, params = eval(symbol("scenario_" * string(sn)))()
+        if !haskey(Scenarios, scenario)
+            if scenario <= 1024
+                sc, sc_state, UAVInfo, params = eval(symbol("scenario_" * string(scenario)))()
             else
                 sc = nothing
                 sc_state = nothing
@@ -619,13 +619,13 @@ function generateScenario(scenario_number::Union{Int64, Vector{Int64}, Void} = n
                 params = nothing
 
                 while true
-                    @assert sn <= typemax(Int16)
+                    @assert scenario <= typemax(Int16)
 
-                    ret = generateScenario_(sn)
+                    ret = generateScenario_(scenario)
 
                     if typeof(ret) <: Bool
-                        sn += 1
-                        #println("scenario restart: ", sn)
+                        scenario += 1
+                        #println("scenario restart: ", scenario)
                     else
                         sc, sc_state, UAVInfo, params = ret
                         break
@@ -664,25 +664,25 @@ function generateScenario(scenario_number::Union{Int64, Vector{Int64}, Void} = n
                 close(vis.fig)
             end
 
-            Scenarios[sn] = Dict{ASCIIString, Any}("UAVInfo" => UAVInfo, "UAVStates" => UAVStates, "params" => params)
+            Scenarios[scenario] = Dict{ASCIIString, Any}("UAVInfo" => UAVInfo, "UAVStates" => UAVStates, "params" => params)
 
             bNewScenario = true
 
         else
-            UAVInfo = Scenarios[sn]["UAVInfo"]
-            UAVStates = Scenarios[sn]["UAVStates"]
-            params = Scenarios[sn]["params"]
+            UAVInfo = Scenarios[scenario]["UAVInfo"]
+            UAVStates = Scenarios[scenario]["UAVStates"]
+            params = Scenarios[scenario]["params"]
 
         end
 
-        if typeof(scenario_number) == Int64
+        if typeof(scenarios) == Int64
             if bNewScenario && bSave
                 save("Scenarios.jld", "Scenarios", Scenarios)
             end
 
             sc, sc_state = generateScenarioWithParams(params, UAVInfo, navigation = navigation; v_def = 40., v_min = 20., v_max = 60.)
 
-            return sc, sc_state, UAVStates, sn
+            return sc, sc_state, UAVStates, scenario
         end
     end
 
@@ -702,16 +702,16 @@ function loadScenarios()
 end
 
 
-function simulateScenario(scenario_number::Union{Int64, Vector{Int64}, Void} = nothing; draw::Bool = true, wait::Bool = false, bSim::Bool = false, navigation::Symbol = :GPS_INS, Scenarios = nothing)
+function simulateScenario(scenarios::Union{Int64, Vector{Int64}, Void} = nothing; draw::Bool = true, wait::Bool = false, bSim::Bool = false, navigation::Symbol = :GPS_INS, Scenarios = nothing)
 
-    if scenario_number == nothing
-        scenario_number = rand(1025:typemax(Int16))
+    if scenarios == nothing
+        scenarios = rand(1025:typemax(Int16))
     end
 
-    for sn in scenario_number
-        println("scenario: ", sn)
+    for scenario in scenarios
+        println("scenario: ", scenario)
 
-        sc, sc_state, UAVStates, _ = generateScenario(sn, navigation = navigation, Scenarios = Scenarios)
+        sc, sc_state, UAVStates, _ = generateScenario(scenario, navigation = navigation, Scenarios = Scenarios)
 
         vis = UTMVisualizer(wait = wait)
 

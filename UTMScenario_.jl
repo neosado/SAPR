@@ -15,7 +15,7 @@ using UAV_
 
 type UTMScenarioParams
 
-    sn::Union{Int64, Void}
+    scenario::Union{Int64, Void}
 
     x::Float64
     y::Float64
@@ -45,11 +45,11 @@ type UTMScenarioParams
     bMCTS::Bool
 
 
-    function UTMScenarioParams(sn::Union{Int64, Void} = nothing)
+    function UTMScenarioParams(scenario::Union{Int64, Void} = nothing)
 
         self = new()
 
-        self.sn = sn
+        self.scenario = scenario
 
         self.x = 0. # ft
         self.y = 0. # ft
@@ -84,7 +84,7 @@ end
 
 type UTMScenario
 
-    sn::Union{Int64, Void}
+    scenario::Union{Int64, Void}
 
     x::Float64
     y::Float64
@@ -118,7 +118,7 @@ type UTMScenario
 
         self = new()
 
-        self.sn = params.sn
+        self.scenario = params.scenario
 
         self.x = params.x
         self.y = params.y
