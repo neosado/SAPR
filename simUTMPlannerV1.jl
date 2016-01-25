@@ -1059,20 +1059,20 @@ function runExpBatch(; bParallel::Bool = false, bAppend::Bool = false)
 
     scenarios = unique(rand(10000:typemax(Int16), round(Int64, nScenarios * 1.1)))[1:nScenarios]
 
-    sparse = Dict("type" => :SparseUCT, "nObsMax" => 4)
+    sparse_ = Dict("type" => :SparseUCT, "nObsMax" => 4)
     MS = Dict("type" => :MS, "L" => [500., 200.], "N" => [2, 2])
 
     tree_policies = Any[
-        Any[sparse, Dict("type" => :UCB1, "c" => 300)],
-        Any[sparse, Dict("type" => :UCB1, "c" => 10000)],
-        Any[sparse, Dict("type" => :TS)],
-        Any[sparse, Dict("type" => :TSM, "ARM" => () -> ArmRewardModel(0.01, 0.01, -100., 1., 1 / 2, 1 / (2 * (1 / 10. ^ 2)), -5000., -10000., 1., 1 / 2,  1 / (2 * (1 / 1.^2))))],
-        Any[sparse, Dict("type" => :AUCB, "SP" => [Dict("type" => :UCB1, "c" => 300), Dict("type" => :UCB1, "c" => 10000)])],
-        #Any[sparse, Dict("type" => :UCB1, "c" => 10000), Dict("type" => :MS, "L" => [500.], "N" => [2])],
-        #Any[sparse, Dict("type" => :UCB1, "c" => 10000), Dict("type" => :MS, "L" => [500.], "N" => [4])],
-        #Any[sparse, Dict("type" => :UCB1, "c" => 10000), Dict("type" => :MS, "L" => [500., 200.], "N" => [2, 2])]
-        #Any[sparse, Dict("type" => :TSM, "ARM" => () -> ArmRewardModel(0.01, 0.01, -100., 1., 1 / 2, 1 / (2 * (1 / 10. ^ 2)), -5000., -10000., 1., 1 / 2,  1 / (2 * (1 / 1.^2)))), MS],
-        #Any[sparse, Dict("type" => :AUCB, "SP" => [Dict("type" => :UCB1, "c" => 300), Dict("type" => :UCB1, "c" => 10000)]), MS],
+        Any[sparse_, Dict("type" => :UCB1, "c" => 300)],
+        Any[sparse_, Dict("type" => :UCB1, "c" => 10000)],
+        Any[sparse_, Dict("type" => :TS)],
+        Any[sparse_, Dict("type" => :TSM, "ARM" => () -> ArmRewardModel(0.01, 0.01, -100., 1., 1 / 2, 1 / (2 * (1 / 10. ^ 2)), -5000., -10000., 1., 1 / 2,  1 / (2 * (1 / 1.^2))))],
+        Any[sparse_, Dict("type" => :AUCB, "SP" => [Dict("type" => :UCB1, "c" => 300), Dict("type" => :UCB1, "c" => 10000)])],
+        #Any[sparse_, Dict("type" => :UCB1, "c" => 10000), Dict("type" => :MS, "L" => [500.], "N" => [2])],
+        #Any[sparse_, Dict("type" => :UCB1, "c" => 10000), Dict("type" => :MS, "L" => [500.], "N" => [4])],
+        #Any[sparse_, Dict("type" => :UCB1, "c" => 10000), Dict("type" => :MS, "L" => [500., 200.], "N" => [2, 2])]
+        #Any[sparse_, Dict("type" => :TSM, "ARM" => () -> ArmRewardModel(0.01, 0.01, -100., 1., 1 / 2, 1 / (2 * (1 / 10. ^ 2)), -5000., -10000., 1., 1 / 2,  1 / (2 * (1 / 1.^2)))), MS],
+        #Any[sparse_, Dict("type" => :AUCB, "SP" => [Dict("type" => :UCB1, "c" => 300), Dict("type" => :UCB1, "c" => 10000)]), MS],
     ]
 
     depth = 10
@@ -1145,16 +1145,16 @@ if false
     nloop_max = 1000
     runtime_max = 0.
 
-    sparse = Dict("type" => :SparseUCT, "nObsMax" => 4)
+    sparse_ = Dict("type" => :SparseUCT, "nObsMax" => 4)
     pw = Dict("type" => :ProgressiveWidening, "c" => 2, "alpha" => 0.4)
     MS = Dict("type" => :MS, "L" => [500., 200.], "N" => [2, 2])
 
     #tree_policy = nothing
-    tree_policy = Any[sparse, Dict("type" => :UCB1, "c" => 300)]
-    #tree_policy = Any[sparse, Dict("type" => :UCB1, "c" => 10000)]
-    #tree_policy = Any[sparse, Dict("type" => :TS)]
-    #tree_policy = Any[sparse, Dict("type" => :TSM, "ARM" => () -> ArmRewardModel(0.01, 0.01, -100., 1., 1 / 2, 1 / (2 * (1 / 10. ^ 2)), -5000., -10000., 1., 1 / 2,  1 / (2 * (1 / 1.^2))))]
-    #tree_policy = Any[sparse, Dict("type" => :AUCB, "SP" => [Dict("type" => :UCB1, "c" => 300), Dict("type" => :UCB1, "c" => 10000)])]
+    tree_policy = Any[sparse_, Dict("type" => :UCB1, "c" => 300)]
+    #tree_policy = Any[sparse_, Dict("type" => :UCB1, "c" => 10000)]
+    #tree_policy = Any[sparse_, Dict("type" => :TS)]
+    #tree_policy = Any[sparse_, Dict("type" => :TSM, "ARM" => () -> ArmRewardModel(0.01, 0.01, -100., 1., 1 / 2, 1 / (2 * (1 / 10. ^ 2)), -5000., -10000., 1., 1 / 2,  1 / (2 * (1 / 1.^2))))]
+    #tree_policy = Any[sparse_, Dict("type" => :AUCB, "SP" => [Dict("type" => :UCB1, "c" => 300), Dict("type" => :UCB1, "c" => 10000)])]
 
     # :default, :MC, :inf, :once, :CE_worst, :CE_best, :MS
     rollout = nothing
@@ -1181,20 +1181,20 @@ if false
 
     scenarios = unique(rand(10000:typemax(Int16), round(Int64, nScenarios * 1.1)))[1:nScenarios]
 
-    sparse = Dict("type" => :SparseUCT, "nObsMax" => 4)
+    sparse_ = Dict("type" => :SparseUCT, "nObsMax" => 4)
     MS = Dict("type" => :MS, "L" => [500., 200.], "N" => [2, 2])
 
     tree_policies = Any[
-        Any[sparse, Dict("type" => :UCB1, "c" => 300)],
-        Any[sparse, Dict("type" => :UCB1, "c" => 10000)],
-        Any[sparse, Dict("type" => :TS)],
-        Any[sparse, Dict("type" => :TSM, "ARM" => () -> ArmRewardModel(0.01, 0.01, -100., 1., 1 / 2, 1 / (2 * (1 / 10. ^ 2)), -5000., -10000., 1., 1 / 2,  1 / (2 * (1 / 1.^2))))],
-        Any[sparse, Dict("type" => :AUCB, "SP" => [Dict("type" => :UCB1, "c" => 300), Dict("type" => :UCB1, "c" => 10000)])],
-        #Any[sparse, Dict("type" => :UCB1, "c" => 10000), Dict("type" => :MS, "L" => [500.], "N" => [2])],
-        #Any[sparse, Dict("type" => :UCB1, "c" => 10000), Dict("type" => :MS, "L" => [500.], "N" => [4])],
-        #Any[sparse, Dict("type" => :UCB1, "c" => 10000), Dict("type" => :MS, "L" => [500., 200.], "N" => [2, 2])]
-        #Any[sparse, Dict("type" => :TSM, "ARM" => () -> ArmRewardModel(0.01, 0.01, -100., 1., 1 / 2, 1 / (2 * (1 / 10. ^ 2)), -5000., -10000., 1., 1 / 2,  1 / (2 * (1 / 1.^2)))), MS],
-        #Any[sparse, Dict("type" => :AUCB, "SP" => [Dict("type" => :UCB1, "c" => 300), Dict("type" => :UCB1, "c" => 10000)]), MS],
+        Any[sparse_, Dict("type" => :UCB1, "c" => 300)],
+        Any[sparse_, Dict("type" => :UCB1, "c" => 10000)],
+        Any[sparse_, Dict("type" => :TS)],
+        Any[sparse_, Dict("type" => :TSM, "ARM" => () -> ArmRewardModel(0.01, 0.01, -100., 1., 1 / 2, 1 / (2 * (1 / 10. ^ 2)), -5000., -10000., 1., 1 / 2,  1 / (2 * (1 / 1.^2))))],
+        Any[sparse_, Dict("type" => :AUCB, "SP" => [Dict("type" => :UCB1, "c" => 300), Dict("type" => :UCB1, "c" => 10000)])],
+        #Any[sparse_, Dict("type" => :UCB1, "c" => 10000), Dict("type" => :MS, "L" => [500.], "N" => [2])],
+        #Any[sparse_, Dict("type" => :UCB1, "c" => 10000), Dict("type" => :MS, "L" => [500.], "N" => [4])],
+        #Any[sparse_, Dict("type" => :UCB1, "c" => 10000), Dict("type" => :MS, "L" => [500., 200.], "N" => [2, 2])]
+        #Any[sparse_, Dict("type" => :TSM, "ARM" => () -> ArmRewardModel(0.01, 0.01, -100., 1., 1 / 2, 1 / (2 * (1 / 10. ^ 2)), -5000., -10000., 1., 1 / 2,  1 / (2 * (1 / 1.^2)))), MS],
+        #Any[sparse_, Dict("type" => :AUCB, "SP" => [Dict("type" => :UCB1, "c" => 300), Dict("type" => :UCB1, "c" => 10000)]), MS],
     ]
 
     #tree_policies = Any[
