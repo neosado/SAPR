@@ -848,7 +848,10 @@ function simulate(pm, alg; draw::Bool = false, wait::Bool = false, bSeq::Bool = 
 end
 
 
-function evalScenario(scenario_number::Union{Int64, Void} = nothing; N::Int64 = 100, RE_threshold::Float64 = 0.1, up_seed::Int64 = nothing, mcts_seed = nothing, bSeq::Bool = true, depth::Int64 = 5, nloop_min::Int64 = 100, nloop_max::Int64 = 1000, runtime_max::Float64 = 0., ts::Int64 = 0, action::Symbol = :waypoint1, tree_policy = nothing, rollout::Union{Tuple{Symbol, Function}, Void} = nothing, Scenarios = nothing, debug::Int64 = 0)
+function evalScenario(scenario::Int64, N::Int64, up_seed::Union{Int64, Vector{Int64}}, mcts_seed::Union{Int64, Vector{Int64}}, tree_policy::Any, rollout::Union{Tuple{Symbol, Function}, Void}; depth::Int64 = 10, nloop_min::Int64 = 100, nloop_max::Int64 = 1000, runtime_max::Float64 = 0., bSeq::Bool = true, ts::Int64 = 0, action::Symbol = :waypoint1, RE_threshold::Float64 = 0., Scenarios::Any = nothing, debug::Int64 = 0)
+
+    @assert length(up_seed) == N
+    @assert length(mcts_seed) == N
 
     X = Float64[]
 
@@ -857,51 +860,51 @@ function evalScenario(scenario_number::Union{Int64, Void} = nothing; N::Int64 = 
     varX = 0.
     RE = 0.
 
-    n = 1
+    n = 0
 
-    while true
-        pm = UTMPlannerV1(seed = up_seed, scenario_number = scenario_number, Scenarios = Scenarios)
+    for i = 1:N
+        n = i
+
+        if debug > 0
+            print(i, " ", up_seed[i], " ", mcts_seed[i], " ")
+        end
+
+        pm = UTMPlannerV1(seed = up_seed[i], scenario_number = scenario, Scenarios = Scenarios)
 
         if !bSeq
-            x = simulate(pm, nothing, ts = ts, action = action)
+            x = simulate(pm, nothing, bSeq = false, ts = ts, action = action)
         else
-            alg = POMCP(seed = mcts_seed, depth = depth, nloop_min = nloop_min, nloop_max = nloop_max, runtime_max = runtime_max, gamma_ = 0.9, tree_policy = tree_policy, rollout = rollout)
-            x = simulate(pm, alg, bSeq = true)
+            alg = POMCP(seed = mcts_seed[i], depth = depth, nloop_min = nloop_min, nloop_max = nloop_max, runtime_max = runtime_max, gamma_ = 0.9, tree_policy = tree_policy, rollout = rollout)
+            x = simulate(pm, alg)
         end
 
         push!(X, x)
 
         if debug > 0
-            println(n, " ", x)
+            println(x)
         end
 
-        meanX += (x - meanX) / n
+        meanX += (x - meanX) / i
         ssX += x * x
 
-        if n > 1
-            varX = (ssX - n * (meanX * meanX)) / ((n - 1) * n)
+        if i > 1
+            varX = (ssX - i * (meanX * meanX)) / ((i - 1) * i)
             RE = sqrt(varX) / abs(meanX)
-        end
 
-        if n % round(Int64, N / 10) == 0
             if RE < RE_threshold
                 break
             end
+        end
 
-            if debug > 0 && n != N
-                println("n: ", n, ", mean: ", neat(meanX), ", std: ", neat(sqrt(varX)), ", RE: ", RE)
+        if i % 10 == 0
+            if debug > 0 && i != N
+                println("n: ", i, ", mean: ", neat(meanX), ", std: ", neat(sqrt(varX)), ", RE: ", neat(RE))
             end
         end
-
-        if n == N
-            break
-        end
-
-        n += 1
     end
 
     if debug > 0
-        println("n: ", n, ", mean: ", neat(meanX), ", std: ", neat(sqrt(varX)), ", RE: ", RE)
+        println("n: ", n, ", mean: ", neat(meanX), ", std: ", neat(sqrt(varX)), ", RE: ", neat(RE))
     end
 
     return X
@@ -1172,108 +1175,88 @@ if false
 end
 
 
-function Experiment01()
+if false
+    srand(12)
+    nScenarios = 100
 
-    srand(round(Int64, time()))
-    sn_list = unique(rand(1025:typemax(Int16), 1100))[1:10]
+    scenarios = unique(rand(10000:typemax(Int16), round(Int64, nScenarios * 1.1)))[1:nScenarios]
+
+    sparse = Dict("type" => :SparseUCT, "nObsMax" => 4)
+    MS = Dict("type" => :MS, "L" => [500., 200.], "N" => [2, 2])
+
+    tree_policies = Any[
+        Any[sparse, Dict("type" => :UCB1, "c" => 300)],
+        Any[sparse, Dict("type" => :UCB1, "c" => 10000)],
+        Any[sparse, Dict("type" => :TS)],
+        Any[sparse, Dict("type" => :TSM, "ARM" => () -> ArmRewardModel(0.01, 0.01, -100., 1., 1 / 2, 1 / (2 * (1 / 10. ^ 2)), -5000., -10000., 1., 1 / 2,  1 / (2 * (1 / 1.^2))))],
+        Any[sparse, Dict("type" => :AUCB, "SP" => [Dict("type" => :UCB1, "c" => 300), Dict("type" => :UCB1, "c" => 10000)])],
+        #Any[sparse, Dict("type" => :UCB1, "c" => 10000), Dict("type" => :MS, "L" => [500.], "N" => [2])],
+        #Any[sparse, Dict("type" => :UCB1, "c" => 10000), Dict("type" => :MS, "L" => [500.], "N" => [4])],
+        #Any[sparse, Dict("type" => :UCB1, "c" => 10000), Dict("type" => :MS, "L" => [500., 200.], "N" => [2, 2])]
+        #Any[sparse, Dict("type" => :TSM, "ARM" => () -> ArmRewardModel(0.01, 0.01, -100., 1., 1 / 2, 1 / (2 * (1 / 10. ^ 2)), -5000., -10000., 1., 1 / 2,  1 / (2 * (1 / 1.^2)))), MS],
+        #Any[sparse, Dict("type" => :AUCB, "SP" => [Dict("type" => :UCB1, "c" => 300), Dict("type" => :UCB1, "c" => 10000)]), MS],
+    ]
+
+    #tree_policies = Any[
+    #    nothing,
+    #    Dict("type" => :SparseUCT, "nObsMax" => 1),
+    #    Dict("type" => :SparseUCT, "nObsMax" => 2),
+    #    Dict("type" => :SparseUCT, "nObsMax" => 4),
+    #    Dict("type" => :SparseUCT, "nObsMax" => 6),
+    #    Dict("type" => :SparseUCT, "nObsMax" => 8),
+    #    Dict("type" => :SparseUCT, "nObsMax" => 10),
+    #    Dict("type" => :SparseUCT, "nObsMax" => 12),
+    #    Dict("type" => :ProgressiveWidening, "c" => 1, "alpha" => 0.4),
+    #    Dict("type" => :ProgressiveWidening, "c" => 2, "alpha" => 0.4),
+    #    Dict("type" => :ProgressiveWidening, "c" => 4, "alpha" => 0.4),
+    #    Dict("type" => :ProgressiveWidening, "c" => 6, "alpha" => 0.4),
+    #    Dict("type" => :ProgressiveWidening, "c" => 2, "alpha" => 0.1),
+    #    Dict("type" => :ProgressiveWidening, "c" => 2, "alpha" => 0.2),
+    #    Dict("type" => :ProgressiveWidening, "c" => 2, "alpha" => 0.4),
+    #    Dict("type" => :ProgressiveWidening, "c" => 2, "alpha" => 0.6)
+    #]
+
+    # :default, :MC, :inf, :once, :CE_worst, :CE_best, :MS
+    rollouts = [(:default, rollout_default)]
+    #rollouts = [(:refined, rollout_refined)]
+    #rollouts = [(:MS, rollout_MS)]
+    #rollouts = [(:MS, rollout_MS_refined)]
+
+    depth = 10
+
+    nloop_min = 1000
+    nloop_max = 1000
+    runtime_max = 0.
 
     N = 100
-    nloop_min = 100
-    nloop_max = 10000
+    RE_threshold = 0.
 
     debug = 0
 
+
     Scenarios = loadScenarios()
 
-    for sn in sn_list
-        println("scenario: ", sn)
-        println("N: ", N, ", nloop_min: ", nloop_min, ", nloop_max: ", nloop_max)
+    for scenario in scenarios
+        println("scenario: ", scenario)
+        println("N: ", N, ", RE_threshold: ", RE_threshold, ", depth: ", depth, ", nloop_min: ", nloop_min, ", nloop_max: ", nloop_max, ", runtime_max: ", runtime_max)
 
-        for rollout in [nothing, (:CE_best, rollout_CE), (:CE_worst, rollout_CE)]
-            print("rollout: ", rollout)
-            if debug > 0
-                println()
+        srand(scenario)
+
+        up_seed_list = unique(rand(10000:typemax(Int16), round(Int64, N * 1.1)))[1:N]
+        mcts_seed_list = unique(rand(10000:typemax(Int16), round(Int64, N * 1.1)))[1:N]
+
+        for tree_policy in tree_policies
+            for rollout in rollouts
+                println("tree_policy: ", tree_policy, ", rollout: ", rollout)
+
+                X = evalScenario(scenario, N, up_seed_list, mcts_seed_list, tree_policy, rollout, depth = depth, nloop_min = nloop_min, nloop_max = nloop_max, runtime_max = runtime_max, RE_threshold = RE_threshold, Scenarios = Scenarios, debug = debug)
+
+                println("n: ", length(X), ", mean: ", neat(mean(X)), ", std: ", neat(std(X) / sqrt(length(X))), ", RE: ", neat((std(X ) / sqrt(length(X))) / abs(mean(X))))
             end
-
-            X = evalScenario(sn, N = N, up_seed = sn + 1, mcts_seed = sn + 2, nloop_min = nloop_min, nloop_max = nloop_max, rollout = rollout, Scenarios = Scenarios, debug = debug)
-
-            if debug == 0
-                print(", ")
-            end
-            println("mean: ", neat(mean(X)), ", std: ", neat(std(X)), ", RE: ", neat(std(X) / abs(mean(X))))
         end
 
         println()
     end
 end
-#Experiment01()
-
-
-function Experiment02()
-
-    seed = round(Int64, time())
-
-    println("seed: ", seed)
-
-    srand(seed)
-
-    #sn_list = 1
-    sn_list = unique(rand(1025:typemax(Int16), 1100))[1:100]
-
-    N = 100
-    RE_threshold = 0.01
-
-    depth = 5
-
-    nloop_min = 100
-    nloop_max = 10000
-    runtime_max = 1.
-
-    #rollout = nothing
-    rollout = (:refined, rollout_refined)
-    #rollout = (:MS, rollout_MS)
-
-    debug = 0
-
-    sparse = Dict("type" => :SparseUCT, "nObsMax" => 8)
-    pw = Dict("type" => :ProgressiveWidening, "c" => 2, "alpha" => 0.4)
-
-
-    Scenarios = loadScenarios()
-
-    for sn in sn_list
-        println("scenario: ", sn)
-
-        for tree_policy in Any[nothing]
-        #for tree_policy in Any[nothing, sparse, pw]
-
-        #for tree_policy in Any[nothing,
-        #    Dict("type" => :SparseUCT, "nObsMax" => 1),
-        #    Dict("type" => :SparseUCT, "nObsMax" => 2),
-        #    Dict("type" => :SparseUCT, "nObsMax" => 4),
-        #    Dict("type" => :SparseUCT, "nObsMax" => 6),
-        #    Dict("type" => :SparseUCT, "nObsMax" => 8),
-        #    Dict("type" => :SparseUCT, "nObsMax" => 10),
-        #    Dict("type" => :SparseUCT, "nObsMax" => 12),
-        #    Dict("type" => :ProgressiveWidening, "c" => 1, "alpha" => 0.4),
-        #    Dict("type" => :ProgressiveWidening, "c" => 2, "alpha" => 0.4),
-        #    Dict("type" => :ProgressiveWidening, "c" => 4, "alpha" => 0.4),
-        #    Dict("type" => :ProgressiveWidening, "c" => 6, "alpha" => 0.4),
-        #    Dict("type" => :ProgressiveWidening, "c" => 2, "alpha" => 0.1),
-        #    Dict("type" => :ProgressiveWidening, "c" => 2, "alpha" => 0.2),
-        #    Dict("type" => :ProgressiveWidening, "c" => 2, "alpha" => 0.4),
-        #    Dict("type" => :ProgressiveWidening, "c" => 2, "alpha" => 0.6)]
-
-            println("N: ", N, ", RE_threshold: ", RE_threshold, ", depth: ", depth, ", nloop_min: ", nloop_min, ", nloop_max: ", nloop_max, ", runtime_max: ", runtime_max, ", tree_policy: ", tree_policy, ", rollout: ", rollout[1])
-
-            X = evalScenario(sn, N = N, RE_threshold = RE_threshold, up_seed = sn + 1, mcts_seed = sn + 2, depth = depth, nloop_min = nloop_min, nloop_max = nloop_max, runtime_max = runtime_max, tree_policy = tree_policy, rollout = rollout, Scenarios = Scenarios, debug = debug)
-
-            println("n: ", length(X), ", mean: ", neat(mean(X)), ", std: ", neat(std(X) / sqrt(length(X))), ", RE: ", neat((std(X ) / sqrt(length(X))) / abs(mean(X))))
-        end
-
-        println()
-    end
-end
-#Experiment02()
 
 
