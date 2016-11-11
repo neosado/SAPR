@@ -15,6 +15,8 @@ using MCTSVisualizer_
 using ArmRewardModel_
 using Util
 
+using CEOpt_
+
 using Iterators
 using Distributions
 using Base.Test
@@ -915,17 +917,56 @@ function evalScenario(scenario::Int64, N::Int64, up_seed::Union{Int64, Vector{In
 end
 
 
+function drawSample(p)
+
+    return rand(Truncated(Normal(p[1], p[2]), 0, Inf))
+end
+
+function computePerf_(scenario::Int64, tree_policy::Any, depth::Int64, nloop_min::Int64, nloop_max::Int64, runtime_max::Float64, rollout::Union{Tuple{Symbol, Function}, Void}, x)
+
+    for stp in tree_policy
+        if stp["type"] == :UCB1
+            stp["c"] = x
+        end
+    end
+
+    pm = UTMPlannerV1(scenario = scenario)
+
+    alg = POMCP(depth = depth, nloop_min = nloop_min, nloop_max = nloop_max, runtime_max = runtime_max, gamma_ = 0.9, tree_policy = tree_policy, rollout = rollout)
+
+    R = simulate(pm, alg)
+
+    return R
+end
+
+computePerf(scenario, tree_policy, depth, nloop_min, nloop_max, runtime_max, rollout) = (x) -> computePerf_(scenario, tree_policy, depth, nloop_min, nloop_max, runtime_max, rollout, x)
+
+function updateParam(X, S, gamma_)
+
+    I = map((x) -> x >= gamma_ ? 1 : 0, S)
+
+    p = Array(Float64, 2)
+    p[1] = sum(I .* X) / sum(I)
+    p[2]= sqrt(sum(I .* (X - p[1]).^2) / sum(I))
+
+    return p
+end
+
+
 function runExp(scenario::Int64, up_seed::Union{Int64, Vector{Int64}}, mcts_seed::Union{Int64, Vector{Int64}}, tree_policy::Any, N::Int64; depth::Int64 = 5, nloop_min::Int64 = 100, nloop_max::Int64 = 10000, runtime_max::Float64 = 1., bParallel::Bool = false, id::Any = nothing)
 
     @assert length(up_seed) == N
     @assert length(mcts_seed) == N
 
     bMS = false
+    bUCB1withCE = false
 
     if tree_policy != nothing
         for stp in tree_policy
             if stp["type"] == :MS
                 bMS = true
+            elseif stp["type"] == :UCB1withCE
+                bUCB1withCE = true
             end
         end
     end
@@ -938,6 +979,29 @@ function runExp(scenario::Int64, up_seed::Union{Int64, Vector{Int64}}, mcts_seed
         rollout = nothing
     end
 
+    if bUCB1withCE
+        tree_policy_ = deepcopy(tree_policy)
+
+        for stp in tree_policy_
+            if stp["type"] == :UCB1withCE
+                stp["type"] = :UCB1
+                stp["c"] = 1.
+            end
+        end
+
+        p = CEOpt(drawSample, [100, 1000], computePerf(scenario, tree_policy_, depth, nloop_min, nloop_max, runtime_max, rollout), updateParam, 100, 0.0460517, debug = 1)
+
+        for stp in tree_policy_
+            if stp["type"] == :UCB1
+                stp["c"] = p[1]
+            end
+        end
+
+    else
+        tree_policy_ = tree_policy
+
+    end
+
     opt_return = nothing
     returns = zeros(N)
 
@@ -948,7 +1012,7 @@ function runExp(scenario::Int64, up_seed::Union{Int64, Vector{Int64}}, mcts_seed
             opt_return = (pm.sc.UAVs[1].nwaypoints + 1) * 100
         end
 
-        alg = POMCP(seed = mcts_seed[i], depth = depth, nloop_min = nloop_min, nloop_max = nloop_max, runtime_max = runtime_max, gamma_ = 0.9, tree_policy = tree_policy, rollout = rollout)
+        alg = POMCP(seed = mcts_seed[i], depth = depth, nloop_min = nloop_min, nloop_max = nloop_max, runtime_max = runtime_max, gamma_ = 0.9, tree_policy = tree_policy_, rollout = rollout)
 
         R = simulate(pm, alg)
 
@@ -1072,7 +1136,7 @@ function runExpBatch(; bParallel::Bool = false, bAppend::Bool = false)
         Any[sparse_, Dict("type" => :TS)],
         Any[sparse_, Dict("type" => :TSM, "ARM" => () -> ArmRewardModel(0.01, 0.01, -100., 1., 1 / 2, 1 / (2 * (1 / 10. ^ 2)), -5000., -10000., 1., 1 / 2,  1 / (2 * (1 / 1.^2))))],
         Any[sparse_, Dict("type" => :AUCB, "SP" => [Dict("type" => :UCB1, "c" => 100), Dict("type" => :UCB1, "c" => 10000)])],
-        Any[sparse_, Dict("type" => :UCB1withCE)]
+        Any[sparse_, Dict{ASCIIString, Any}("type" => :UCB1withCE)]
     ]
 
     depth = 10
