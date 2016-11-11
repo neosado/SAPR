@@ -989,7 +989,7 @@ function runExp(scenario::Int64, up_seed::Union{Int64, Vector{Int64}}, mcts_seed
             end
         end
 
-        p = CEOpt(drawSample, [100, 1000], computePerf(scenario, tree_policy_, depth, nloop_min, nloop_max, runtime_max, rollout), updateParam, 100, 0.0460517, debug = 1)
+        p = CEOpt(drawSample, [100, 1000], computePerf(scenario, tree_policy_, depth, nloop_min, nloop_max, runtime_max, rollout), updateParam, 100, 0.0460517)
 
         for stp in tree_policy_
             if stp["type"] == :UCB1
