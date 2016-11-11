@@ -991,6 +991,12 @@ function expBatchWorker(scenarios::Union{Int64, Vector{Int64}}, tree_policies, d
                     opt_return = 0
                     returns = zeros(N)
 
+                    # XXX Debug
+                    if length(results) == 1
+                        println(typeof(results))
+                        println(results)
+                    end
+
                     for result in results
                         id = result[1]
                         opt_return = result[2]
