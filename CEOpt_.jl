@@ -9,7 +9,7 @@ module CEOpt_
 export CEOpt
 
 
-function CEOpt(sample::Function, p0::Any, perf::Function, update::Function, N::Int64, rho::Float64; debug::Int64 = 0, bSmooth::Bool = false, alpha::Float64 = 0.7)
+function CEOpt(sample::Function, p0::Any, perf::Function, update::Function, N::Int64, rho::Float64; debug::Int64 = 0, bSmooth::Bool = false, alpha::Float64 = 0.7, bParallel::Bool = false)
 
     p = p0
 
@@ -25,7 +25,21 @@ function CEOpt(sample::Function, p0::Any, perf::Function, update::Function, N::I
     while d < 3
         for i = 1:N
             X[i] = sample(p)
-            S[i] = perf(X[i])
+        end
+
+        if bParallel
+            results = pmap(id -> perf(id, X[id]), 1:N)
+
+            S = zeros(N)
+            for result in results
+                S[result[1]] = result[2]
+            end
+
+        else
+            for i = 1:N
+                S[i] = perf(nothing, X[i])
+            end
+
         end
 
         Ssorted = sort(S)

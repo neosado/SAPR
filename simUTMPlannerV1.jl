@@ -917,56 +917,17 @@ function evalScenario(scenario::Int64, N::Int64, up_seed::Union{Int64, Vector{In
 end
 
 
-function drawSample(p)
-
-    return rand(Truncated(Normal(p[1], p[2]), 0, Inf))
-end
-
-function computePerf_(scenario::Int64, tree_policy::Any, depth::Int64, nloop_min::Int64, nloop_max::Int64, runtime_max::Float64, rollout::Union{Tuple{Symbol, Function}, Void}, x)
-
-    for stp in tree_policy
-        if stp["type"] == :UCB1
-            stp["c"] = x
-        end
-    end
-
-    pm = UTMPlannerV1(scenario = scenario)
-
-    alg = POMCP(depth = depth, nloop_min = nloop_min, nloop_max = nloop_max, runtime_max = runtime_max, gamma_ = 0.9, tree_policy = tree_policy, rollout = rollout)
-
-    R = simulate(pm, alg)
-
-    return R
-end
-
-computePerf(scenario, tree_policy, depth, nloop_min, nloop_max, runtime_max, rollout) = (x) -> computePerf_(scenario, tree_policy, depth, nloop_min, nloop_max, runtime_max, rollout, x)
-
-function updateParam(X, S, gamma_)
-
-    I = map((x) -> x >= gamma_ ? 1 : 0, S)
-
-    p = Array(Float64, 2)
-    p[1] = sum(I .* X) / sum(I)
-    p[2]= sqrt(sum(I .* (X - p[1]).^2) / sum(I))
-
-    return p
-end
-
-
 function runExp(scenario::Int64, up_seed::Union{Int64, Vector{Int64}}, mcts_seed::Union{Int64, Vector{Int64}}, tree_policy::Any, N::Int64; depth::Int64 = 5, nloop_min::Int64 = 100, nloop_max::Int64 = 10000, runtime_max::Float64 = 1., bParallel::Bool = false, id::Any = nothing)
 
     @assert length(up_seed) == N
     @assert length(mcts_seed) == N
 
     bMS = false
-    bUCB1withCE = false
 
     if tree_policy != nothing
         for stp in tree_policy
             if stp["type"] == :MS
                 bMS = true
-            elseif stp["type"] == :UCB1withCE
-                bUCB1withCE = true
             end
         end
     end
@@ -979,29 +940,6 @@ function runExp(scenario::Int64, up_seed::Union{Int64, Vector{Int64}}, mcts_seed
         rollout = nothing
     end
 
-    if bUCB1withCE
-        tree_policy_ = deepcopy(tree_policy)
-
-        for stp in tree_policy_
-            if stp["type"] == :UCB1withCE
-                stp["type"] = :UCB1
-                stp["c"] = 1.
-            end
-        end
-
-        p = CEOpt(drawSample, [100, 1000], computePerf(scenario, tree_policy_, depth, nloop_min, nloop_max, runtime_max, rollout), updateParam, 100, 0.0460517)
-
-        for stp in tree_policy_
-            if stp["type"] == :UCB1
-                stp["c"] = p[1]
-            end
-        end
-
-    else
-        tree_policy_ = tree_policy
-
-    end
-
     opt_return = nothing
     returns = zeros(N)
 
@@ -1012,7 +950,7 @@ function runExp(scenario::Int64, up_seed::Union{Int64, Vector{Int64}}, mcts_seed
             opt_return = (pm.sc.UAVs[1].nwaypoints + 1) * 100
         end
 
-        alg = POMCP(seed = mcts_seed[i], depth = depth, nloop_min = nloop_min, nloop_max = nloop_max, runtime_max = runtime_max, gamma_ = 0.9, tree_policy = tree_policy_, rollout = rollout)
+        alg = POMCP(seed = mcts_seed[i], depth = depth, nloop_min = nloop_min, nloop_max = nloop_max, runtime_max = runtime_max, gamma_ = 0.9, tree_policy = tree_policy, rollout = rollout)
 
         R = simulate(pm, alg)
 
@@ -1028,6 +966,50 @@ function runExp(scenario::Int64, up_seed::Union{Int64, Vector{Int64}}, mcts_seed
     else
         return opt_return, returns
     end
+end
+
+
+function drawSample(p)
+
+    if p[2] == 0.
+        return p[1]
+    else
+        return rand(Truncated(Normal(p[1], p[2]), 0, Inf))
+    end
+end
+
+function computePerf_(scenario::Int64, tree_policy::Any, depth::Int64, nloop_min::Int64, nloop_max::Int64, runtime_max::Float64, rollout::Union{Tuple{Symbol, Function}, Void}, id, x)
+
+    for stp in tree_policy
+        if stp["type"] == :UCB1
+            stp["c"] = x
+        end
+    end
+
+    pm = UTMPlannerV1(scenario = scenario)
+
+    alg = POMCP(depth = depth, nloop_min = nloop_min, nloop_max = nloop_max, runtime_max = runtime_max, gamma_ = 0.9, tree_policy = tree_policy, rollout = rollout)
+
+    R = simulate(pm, alg)
+
+    if id == nothing
+        return R
+    else
+        return id, R
+    end
+end
+
+computePerf(scenario, tree_policy, depth, nloop_min, nloop_max, runtime_max, rollout) = (id, x) -> computePerf_(scenario, tree_policy, depth, nloop_min, nloop_max, runtime_max, rollout, id, x)
+
+function updateParam(X, S, gamma_)
+
+    I = map((x) -> x >= gamma_ ? 1 : 0, S)
+
+    p = Array(Float64, 2)
+    p[1] = sum(I .* X) / sum(I)
+    p[2]= sqrt(sum(I .* (X - p[1]).^2) / sum(I))
+
+    return p
 end
 
 
@@ -1050,7 +1032,49 @@ function expBatchWorker(scenarios::Union{Int64, Vector{Int64}}, tree_policies, d
         if bParallel
             if true
                 for tree_policy in tree_policies
-                    results = pmap(id -> runExp(scenario, up_seed_list[id], mcts_seed_list[id], tree_policy, 1, depth = depth, nloop_min = nloop_min, nloop_max = nloop_max, runtime_max = runtime_max, bParallel = true, id = id), 1:N)
+                    bMS = false
+                    bUCB1withCE = false
+
+                    if tree_policy != nothing
+                        for stp in tree_policy
+                            if stp["type"] == :MS
+                                bMS = true
+                            elseif stp["type"] == :UCB1withCE
+                                bUCB1withCE = true
+                            end
+                        end
+                    end
+
+                    if bUCB1withCE
+                        tree_policy_ = deepcopy(tree_policy)
+
+                        for stp in tree_policy_
+                            if stp["type"] == :UCB1withCE
+                                stp["type"] = :UCB1
+                                stp["c"] = 1.
+                            end
+                        end
+
+                        if bMS
+                            rollout = (:MS, rollout_MS)
+                        else
+                            rollout = nothing
+                        end
+
+                        p = CEOpt(drawSample, [100, 1000], computePerf(scenario, tree_policy_, depth, nloop_min, nloop_max, runtime_max, rollout), updateParam, 100, 0.0460517, bParallel = true)
+
+                        for stp in tree_policy_
+                            if stp["type"] == :UCB1
+                                stp["c"] = p[1]
+                            end
+                        end
+
+                    else
+                        tree_policy_ = tree_policy
+
+                    end
+
+                    results = pmap(id -> runExp(scenario, up_seed_list[id], mcts_seed_list[id], tree_policy_, 1, depth = depth, nloop_min = nloop_min, nloop_max = nloop_max, runtime_max = runtime_max, bParallel = true, id = id), 1:N)
 
                     opt_return = 0
                     returns = zeros(N)
